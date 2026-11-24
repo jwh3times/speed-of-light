@@ -1,3 +1,5 @@
 /target
 *.log
 report.json
+node_modules/
+.claude/settings.local.json

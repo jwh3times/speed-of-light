@@ -5,26 +5,85 @@ on:
     branches: [main]
   pull_request:
 
+# Every job only reads the repository (the changelog job reads tags), so the token gets nothing
+# more. Releases, which push tags, run in release.yml with their own permissions.
 permissions:
   contents: read
 
+# A newer push to a pull request replaces its running checks; runs on main always finish.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  CARGO_TERM_COLOR: always
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  check:
-    name: Format, lint, test
+  # The Rust workspace. Windows, because the product is Windows-only: the named pipe, its DACL and
+  # the process scan are Win32 code that does not build elsewhere. The tests are hermetic (the
+  # simulator, never a GPU); the live probes are #[ignore]d.
+  rust:
     runs-on: windows-latest
+    env:
+      CARGO_TERM_COLOR: always
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # rust-toolchain.toml pins the compiler (the MSRV) and its components; rustup installs it.
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+
+  # The pull request's changelog fragment parses, and it leaves CHANGELOG.md's sections and other
+  # merges' fragments alone (`Scheme: stamp-on-tag`, docs/agents/releases.md). It never requires a
+  # fragment: a merge with none, Dependabot's included, gets a section from its PR title.
+  # A required check, so it always reports: the push exemption is inside the step, not a job `if`.
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # full history, to compare the branch with main
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Changelog fragment is valid
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "Checked on the pull request; on main the release workflow stamps the changelog."
+            exit 0
+          fi
+          node scripts/check-changelog.mjs
+
+  # Agent config and docs. The scripts need no dependencies, so nothing is installed.
+  agents:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      # .claude/skills/ mirrors .agents/skills/, and the shared AGENTS.md blocks are current.
+      - name: Generated agent config is in sync
+        run: node scripts/sync-agents.mjs --check
+
+      - name: Installed skills match the lock
+        run: node scripts/check-skills.mjs
+
+      # Skill and agent sources are read from their mirrored copies too: a bare $0-$9 in a
+      # SKILL.md or a relative link that breaks there fails here.
+      - name: Skill and agent sources are tool-neutral
+        run: node scripts/lint-agent-neutrality.mjs
+
+      # Local links and anchors resolve, and the doc map lists every document.
+      - name: Docs links and doc map
+        run: node scripts/check-docs.mjs
+
+      # VERSION, which the tag workflow reads, and Cargo.toml's workspace version name one line.
+      - name: Cargo version matches VERSION
+        run: node scripts/check-cargo-version.mjs
+
+      - name: Script tests
+        run: node --test "scripts/*.test.mjs"

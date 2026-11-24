@@ -42,13 +42,39 @@ them. Speed of Light competes on **trust**:
 
 ## Quick start
 
-Needs Windows 10/11 and [Rust](https://rustup.rs) 1.88 or newer.
+Needs Windows 10/11 (x64). NVIDIA monitoring uses the NVML library that ships with the driver,
+so there's nothing else to install.
+
+### Download a release
+
+Every merge to `main` is a release. Each [GitHub Release](https://github.com/jwh3times/speed-of-light/releases)
+has `speed-of-light-v<version>-windows-x64.zip`, built by CI from that release's tagged commit,
+and a `SHA256SUMS.txt` beside it. The zip holds `sol.exe`, `sol-service.exe`,
+`examples\profiles\`, this README, the license, `SECURITY.md` and the release notes.
+
+```powershell
+# In the folder you downloaded both files to
+(Get-FileHash .\speed-of-light-v<version>-windows-x64.zip -Algorithm SHA256).Hash   # compare with SHA256SUMS.txt
+Expand-Archive .\speed-of-light-v<version>-windows-x64.zip -DestinationPath .
+cd .\speed-of-light-v<version>-windows-x64
+$env:Path = "$PWD;$env:Path"
+```
+
+### Or build from source
+
+Needs [rustup](https://rustup.rs). `rust-toolchain.toml` pins Rust 1.88, which rustup installs on
+the first build.
 
 ```powershell
 git clone https://github.com/jwh3times/speed-of-light
 cd speed-of-light
 cargo build --release
 $env:Path = "$PWD\target\release;$env:Path"
+```
+
+### Try it
+
+```powershell
 
 # Read-only, no service needed
 sol probe                    # GPUs, capabilities, live readings, conflicting tools
