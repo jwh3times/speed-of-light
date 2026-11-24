@@ -1,0 +1,43 @@
+name: Hardware report
+description: Help verify Speed of Light on your GPU and driver.
+title: "[hardware] <GPU> on driver <version>"
+labels: ["hardware-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Close other tuning tools (Afterburner, Fan Control, GPU Tweak, ...) first.
+        `sol probe` lists any that are still running.
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and board partner
+      placeholder: "RTX 3080 Ti, EVGA FTW3"
+    validations:
+      required: true
+  - type: dropdown
+    id: form
+    attributes:
+      label: Desktop or laptop
+      options: [Desktop, Laptop]
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`sol doctor` output"
+      description: Read-only. GPU IDs are hashed.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: selftest
+    attributes:
+      label: "`sol selftest --write` output (optional, elevated terminal)"
+      description: Changes each setting slightly for a few seconds and restores it.
+      render: text
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Crashes, odd readings, settings that didn't stick.

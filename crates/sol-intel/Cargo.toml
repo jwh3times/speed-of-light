@@ -1,0 +1,15 @@
+[package]
+name = "sol-intel"
+description = "Intel backend for Speed of Light (IGCL) - detection only for now"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+sol-core.workspace = true
+
+[lints]
+workspace = true

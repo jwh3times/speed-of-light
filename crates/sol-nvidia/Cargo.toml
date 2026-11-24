@@ -1,0 +1,17 @@
+[package]
+name = "sol-nvidia"
+description = "NVIDIA backend for Speed of Light (NVML)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+sol-core.workspace = true
+nvml-wrapper.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

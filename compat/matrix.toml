@@ -1,0 +1,29 @@
+# Driver compatibility matrix.
+#
+# Every write the service makes is checked against this file (see docs/compat-matrix.md):
+#   - a matching `broken` entry blocks the write, always;
+#   - a matching `verified` entry allows it;
+#   - no match means "unverified", which is blocked unless the user passes --allow-unverified.
+#
+# An entry needs evidence: a link to a hardware report issue, or `sol selftest --write` output
+# pasted into the PR that adds it. Entries without evidence fail the build.
+#
+# Fields:
+#   vendor        nvidia | amd | intel | simulated
+#   feature       telemetry | power_limit | clock_offset | fan_control
+#   status        verified | broken
+#   min_driver    inclusive lower bound, optional ("621.01")
+#   max_driver    inclusive upper bound, optional
+#   architecture  as the backend reports it ("Ampere", "Ada", "Blackwell"), optional
+#   note          one line shown to the user
+#   evidence      where the proof lives
+
+[[entry]]
+vendor = "nvidia"
+feature = "telemetry"
+status = "verified"
+min_driver = "621.01"
+max_driver = "621.01"
+architecture = "Ampere"
+note = "RTX 3080 Ti: temps, clocks, power, utilization, VRAM, fan duty+RPM, limiters, offsets read back"
+evidence = "live read-only probe (cargo test -p sol-nvidia -- --ignored) on 2026-11-24, RTX 3080 Ti, VBIOS 94.02.71.80.9c"

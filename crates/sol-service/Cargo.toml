@@ -1,0 +1,40 @@
+[package]
+name = "sol-service"
+description = "The Speed of Light service: owns the hardware, runs fan curves, serves clients"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "sol_service"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sol-service"
+path = "src/main.rs"
+
+[dependencies]
+sol-core.workspace = true
+sol-nvidia.workspace = true
+sol-amd.workspace = true
+sol-intel.workspace = true
+sol-ipc.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+tokio.workspace = true
+toml.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

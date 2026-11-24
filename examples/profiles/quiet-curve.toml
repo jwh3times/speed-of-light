@@ -1,0 +1,17 @@
+# A quiet fan curve with the power limit at 90 % of stock: most of the performance,
+# noticeably less heat and noise.
+schema = 1
+name = "Quiet curve"
+
+[power]
+percent = 90
+
+[fan]
+mode = "curve"
+# [temperature °C, fan duty %]. Duty must not decrease as temperature rises.
+points = [[40, 30], [55, 38], [65, 50], [75, 75], [83, 100]]
+
+[fan.tuning]
+hysteresis = 3.0          # °C the temperature must fall before the fan slows
+ramp_down_per_sec = 5.0   # slow, unobtrusive spin-down
+critical_temp = 87.0      # 100 % at or above this (capped at the GPU's own slowdown point)

@@ -1,0 +1,148 @@
+# Speed of Light
+
+[![CI](https://github.com/jwh3times/speed-of-light/actions/workflows/ci.yml/badge.svg)](https://github.com/jwh3times/speed-of-light/actions/workflows/ci.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+
+**Open, vendor-neutral GPU tuning, fan control and monitoring for Windows. It's built to be the
+safe default that replaces MSI Afterburner.**
+
+> **Status: pre-alpha.** NVIDIA monitoring works and is verified on real hardware. Power limit,
+> clock offset and fan control are implemented and tested against a simulated GPU, but they
+> haven't been verified on any driver yet, so they stay blocked unless you opt in with
+> `--allow-unverified`. There's no GUI or in-game overlay yet.
+> See the [PRD](docs/PRD.md) and [ROADMAP](ROADMAP.md).
+
+## Why
+
+Afterburner is maintained by essentially one developer, and its stable releases arrive years
+apart. The newer tools are single-vendor, and they break whenever a driver changes underneath
+them. Speed of Light competes on **trust**:
+
+| | |
+| --- | --- |
+| **Verified writes** | Every setting is read back after it's applied. If the driver accepts a value but ignores it, you see `NOT ENFORCED`, not "Applied". |
+| **Proven driver support** | A [compatibility matrix](docs/compat-matrix.md) built from community hardware reports. Unverified driver/GPU combinations are opt-in. Known-broken ones are blocked with the reason. |
+| **Fails toward cooling** | Fan curves hand control back to the GPU firmware if the sensor dies, if writes fail, or if the service stops. A fixed fan speed is overridden before thermal slowdown. [Every guarantee has a test.](docs/safety.md) |
+| **Crash guard** | A profile that crashed your PC isn't re-applied at the next boot. |
+| **Honest readings** | A sensor your card doesn't have shows `n/a`, never `0 °C`. |
+| **No kernel driver** | Only vendor-supported user-mode APIs, so there's nothing for Defender or anti-cheat to flag. |
+| **Vendor-neutral** | NVIDIA today. AMD (ADLX) and Intel (IGCL) plug into the same interface. |
+
+## Features
+
+| Area | Now | Planned |
+| --- | --- | --- |
+| Monitoring | Temps, clocks, power, utilization, VRAM, fans, throttle reasons (NVIDIA) | Hotspot/memory temps, logging, graphs |
+| Tuning | Power limit, core/memory offsets (opt-in until verified), reset to stock | V/F curve editor, undervolt assistant |
+| Fans | Auto, fixed, curves with hysteresis, ramp limits, critical override, watchdogs | Per-fan curves, other temperature sources |
+| Profiles | Strict TOML, device targeting, startup profile | Hotkeys, per-game profiles |
+| Overlay | n/a | PresentMon frame metrics, RTSS integration, native overlay |
+| Interfaces | `sol` CLI, JSON-lines IPC | GUI (tray app) |
+| Vendors | NVIDIA (NVML) | AMD (ADLX), Intel (IGCL) |
+
+## Quick start
+
+Needs Windows 10/11 and [Rust](https://rustup.rs) 1.88 or newer.
+
+```powershell
+git clone https://github.com/jwh3times/speed-of-light
+cd speed-of-light
+cargo build --release
+$env:Path = "$PWD\target\release;$env:Path"
+
+# Read-only, no service needed
+sol probe                    # GPUs, capabilities, live readings, conflicting tools
+sol doctor -o report.json    # redacted hardware report
+
+# Try everything safely against a simulated GPU
+sol-service run --simulate 1          # in one terminal
+sol status                            # in another
+sol apply --allow-unverified examples\profiles\quiet-curve.toml
+sol watch
+sol reset
+```
+
+To control a real GPU, run `sol-service run` from an **elevated** terminal. Close Afterburner,
+Fan Control and other tuning tools first: two tools driving the same fans fight each other.
+`sol probe` lists any that are still running.
+
+### Profiles
+
+```toml
+schema = 1
+name = "Quiet curve"
+
+[power]
+percent = 90                 # of the card's stock limit (or: watts = 300)
+
+[clocks]
+memory_offset_mhz = 500
+
+[fan]
+mode = "curve"               # "auto" | "fixed" | "curve"
+points = [[40, 30], [55, 38], [65, 50], [75, 75], [83, 100]]
+```
+
+`sol profile check <file>` validates a profile without applying it. Unknown keys are errors,
+so a typo can't silently do nothing.
+
+## Help verify your GPU
+
+Hardware reports are the most valuable contribution, and they don't need any code:
+
+1. Close other tuning tools.
+2. `sol doctor -o report.json` (read-only; GPU IDs are hashed).
+3. Optional, from an elevated terminal: `sol selftest --write`. It nudges each control for a
+   few seconds (power −10 %, core +15 MHz, memory +50 MHz, fans 60 %), verifies it, and
+   restores the original.
+4. [Open a hardware report](https://github.com/jwh3times/speed-of-light/issues/new?template=hardware-report.yml)
+   with both outputs.
+
+## How it's built
+
+```
+sol CLI / GUI / scripts ──JSON lines over a named pipe──► sol-service (elevated) ──► sol-core ──► vendor backends
+```
+
+| Crate | Role |
+| --- | --- |
+| [`sol-core`](crates/sol-core) | Domain model, safety gate (plan, compatibility check, write, verify), fan-curve engine, profiles, compatibility matrix, crash guard, GPU simulator. No hardware access. |
+| [`sol-nvidia`](crates/sol-nvidia) | NVIDIA backend over NVML |
+| [`sol-amd`](crates/sol-amd), [`sol-intel`](crates/sol-intel) | Detection only, for now |
+| [`sol-ipc`](crates/sol-ipc) | Versioned protocol over a locked-down named pipe |
+| [`sol-service`](crates/sol-service) | Owns the hardware: control loop, watchdogs, IPC server |
+| [`sol-cli`](crates/sol-cli) | The `sol` command |
+
+Documentation:
+
+- [Product requirements](docs/PRD.md)
+- [Architecture](docs/architecture.md)
+- [Safety invariants](docs/safety.md)
+- [Testing strategy](docs/testing.md)
+- [Vendor APIs](docs/vendor-apis.md)
+- [Landscape](docs/landscape.md)
+
+## Development
+
+```powershell
+cargo test --workspace                                # hermetic: no GPU or admin needed
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all
+cargo test -p sol-nvidia -- --ignored --nocapture     # read-only live probe on an NVIDIA GPU
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md). Security issues: see
+[SECURITY.md](SECURITY.md).
+
+## License
+
+[GNU Affero General Public License v3.0 only](LICENSE) (`AGPL-3.0-only`). You may use, study,
+modify and share this software. If you distribute it, or make a modified version available to
+users over a network, you must release your source under the same license.
+
+## Disclaimer
+
+Changing GPU power, clocks and fan behaviour can cause instability, data loss or hardware
+damage. You use this software at your own risk. It comes with no warranty (see sections 15–16 of
+the license). Speed of Light isn't affiliated with or endorsed by NVIDIA, AMD, Intel or MSI.
+"MSI Afterburner" is a trademark of Micro-Star International.

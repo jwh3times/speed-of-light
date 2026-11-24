@@ -1,0 +1,11 @@
+# A modest memory overclock for one specific card model. Leaves the core and fans alone.
+# Verify stability yourself: the tool checks that the driver applied the offset, not that
+# your memory is stable at it.
+schema = 1
+name = "Memory +500"
+
+[target]
+name_contains = "RTX 3080"
+
+[clocks]
+memory_offset_mhz = 500

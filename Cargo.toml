@@ -1,0 +1,56 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/sol-core",
+    "crates/sol-nvidia",
+    "crates/sol-amd",
+    "crates/sol-intel",
+    "crates/sol-ipc",
+    "crates/sol-service",
+    "crates/sol-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+license = "AGPL-3.0-only"
+repository = "https://github.com/jwh3times/speed-of-light"
+
+[workspace.dependencies]
+sol-core = { path = "crates/sol-core" }
+sol-nvidia = { path = "crates/sol-nvidia" }
+sol-amd = { path = "crates/sol-amd" }
+sol-intel = { path = "crates/sol-intel" }
+sol-ipc = { path = "crates/sol-ipc" }
+
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+nvml-wrapper = "0.13"
+nvml-wrapper-sys = "0.10"
+libloading = "0.8"
+proptest = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync", "signal"] }
+toml = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Diagnostics_ToolHelp",
+] }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
