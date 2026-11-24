@@ -54,7 +54,7 @@ and a `SHA256SUMS.txt` beside it. The zip holds `sol.exe`, `sol-service.exe`,
 
 ```powershell
 # In the folder you downloaded both files to
-(Get-FileHash .\speed-of-light-v<version>-windows-x64.zip -Algorithm SHA256).Hash   # compare with SHA256SUMS.txt
+(Get-FileHash .\speed-of-light-v<version>-windows-x64.zip -Algorithm SHA256).Hash.ToLower()   # compare with SHA256SUMS.txt
 Expand-Archive .\speed-of-light-v<version>-windows-x64.zip -DestinationPath .
 cd .\speed-of-light-v<version>-windows-x64
 $env:Path = "$PWD;$env:Path"
@@ -75,7 +75,6 @@ $env:Path = "$PWD\target\release;$env:Path"
 ### Try it
 
 ```powershell
-
 # Read-only, no service needed
 sol probe                    # GPUs, capabilities, live readings, conflicting tools
 sol doctor -o report.json    # redacted hardware report
