@@ -14,7 +14,10 @@ Every report on a new card, driver or laptop extends the compatibility matrix fo
    - fans fail towards cooling;
    - tests never write to real hardware.
 2. `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings` and
-   `cargo test --workspace` must pass. CI runs exactly these.
+   `cargo test --workspace` must pass. CI's `rust` job runs exactly these; its `agents` and
+   `changelog` jobs check the repository scripts and docs (the `node` commands in AGENTS.md).
+   Describe a user-visible change in a `changelog.d/` fragment, never in `CHANGELOG.md` itself
+   ([changelog.d/README.md](changelog.d/README.md)).
 3. A new safety behaviour needs a test that fails without it, and a row in
    [docs/safety.md](docs/safety.md).
 4. A new backend implements `sol_core::GpuDevice`. Its tests run against fakes, plus an

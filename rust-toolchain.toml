@@ -1,0 +1,7 @@
+# The toolchain every build uses, locally and in CI: the minimum supported Rust version, the same
+# as `rust-version` in Cargo.toml, so a change that needs a newer compiler fails here first. Move
+# both together, on purpose; Dependabot does not bump this file.
+[toolchain]
+channel = "1.88"
+components = ["clippy", "rustfmt"]
+profile = "minimal"
