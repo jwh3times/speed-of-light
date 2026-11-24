@@ -15,6 +15,12 @@ released in 0.1.0._
 
 No unreleased changes.
 
+## [0.1.1] - 2026-11-24
+
+### Changed
+
+- build(deps): Bump `toml` from `0.9.12+spec-1.1.0` to `1.2.2+spec-1.1.0` (#4)
+
 ## [0.1.0] - 2026-11-24
 
 ### Added
