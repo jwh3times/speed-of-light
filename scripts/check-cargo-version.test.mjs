@@ -34,6 +34,16 @@ describe("findWorkspaceVersion", () => {
     assert.equal(findWorkspaceVersion(toml), null);
   });
 
+  test("ignores a version key in a section after [workspace.package]", () => {
+    const toml = `[workspace.package]\nedition = "2024"\n\n[package]\nversion = "5.0.0"\n`;
+    assert.equal(findWorkspaceVersion(toml), null);
+  });
+
+  test("reads version, not rust-version, whichever comes first", () => {
+    const toml = `[workspace.package]\nrust-version = "1.88"\nversion = "0.1.0"\n`;
+    assert.equal(findWorkspaceVersion(toml)?.value, "0.1.0");
+  });
+
   test("is null without a [workspace.package] section", () => {
     assert.equal(findWorkspaceVersion(`[package]\nversion = "1.0.0"\n`), null);
   });
@@ -99,6 +109,16 @@ describe("check and set", () => {
   test("set rejects a version that is not plain SemVer", () => {
     assert.throws(() => set("v0.3.0", root), /not a plain/);
     assert.throws(() => set("0.3", root), /not a plain/);
+    assert.throws(() => set("0.3.0-rc.1", root), /not a plain/);
+    assert.throws(() => set("0.3.0.1", root), /not a plain/);
+  });
+
+  test("check fails when Cargo.toml has no workspace version", () => {
+    writeFileSync(path.join(root, "Cargo.toml"), `[package]\nname = "x"\nversion = "0.1.0"\n`);
+    writeFileSync(path.join(root, "VERSION"), "0.1.0\n");
+    const result = check(root);
+    assert.equal(result.ok, false);
+    assert.match(result.message, /no version/);
   });
 
   test("main returns 1 on a mismatch and 0 once set", () => {
