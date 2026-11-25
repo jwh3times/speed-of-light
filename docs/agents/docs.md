@@ -50,9 +50,11 @@
   `scripts/sync-agents.mjs`; never edit them here.
 - `CLAUDE.md`: imports `AGENTS.md` for Claude Code. `owner-only`.
 - `docs/agents/*.md`: settings the shared skills read. Update when this repository's process
-  changes, or the `main` ruleset's required checks do (`open-pr.md` lists them).
+  changes, or the `main` or tag rulesets do (`open-pr.md` lists the `main` rules, `merging.md`
+  the tag rules).
 - `docs/agents/merging.md`: from open PR to released and packaged version. Update when a merge or
-  release lesson is learned that no check enforces, or a command it quotes changes.
+  release lesson is learned that no check enforces, a command it quotes changes, or the `main` or
+  tag rulesets do.
 - `docs/agents/dependabot.md`: what reviewing a Dependabot pull request takes here, read by the
   `dependabot` skill. Update when `.github/dependabot.yml`, a workflow's toolchain or install steps,
   `rust-toolchain.toml` or the workspace's main dependencies change.
@@ -68,7 +70,10 @@
 ## Drift probes
 
 - CI jobs and their commands: `.github/workflows/ci.yml`.
-- Required checks: `gh api repos/jwh3times/speed-of-light/rules/branches/main`.
+- Required checks and the other `main` rules:
+  `gh api repos/jwh3times/speed-of-light/rules/branches/main`.
+- The tag ruleset's rules and bypass actors: `gh api repos/jwh3times/speed-of-light/rulesets/<id>`,
+  the id from `gh api repos/jwh3times/speed-of-light/rulesets`.
 - Crates in `AGENTS.md`'s layout and `docs/architecture.md`: the `members` of `Cargo.toml`.
 - CLI commands in `README.md` and `AGENTS.md`: the `Command` enums in `crates/sol-cli/src/main.rs`
   and `crates/sol-service/src/main.rs`.

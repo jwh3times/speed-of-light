@@ -25,4 +25,7 @@ check` on every pull request, Dependabot's included. Nothing is CI-only: the liv
 
 The `Main branch rules` ruleset on `main` requires a PR (merge commits only, review threads
 resolved), the `rust`, `agents` and `changelog` checks passing on a branch up to date with `main`,
-and CodeQL code scanning (`gh api repos/jwh3times/speed-of-light/rules/branches/main`).
+and CodeQL code scanning (`gh api repos/jwh3times/speed-of-light/rules/branches/main`). It also
+blocks deletion and force pushes, and requests a Copilot review on every push to a non-draft PR,
+whose threads must be resolved like any other. Its one bypass actor is the release App, which pushes
+the stamp commit (`.github/workflows/release.yml`).
