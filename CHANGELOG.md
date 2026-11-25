@@ -15,6 +15,14 @@ released in 0.1.0._
 
 No unreleased changes.
 
+## [0.1.4] - 2026-11-25
+
+### Changed
+
+- The agent docs record that merges never edit `VERSION`, the `main` and `Version tags` rulesets in
+  full, and that a pull request with no CodeQL analysis on its head cannot merge until a new commit
+  starts one (#5)
+
 ## [0.1.3] - 2026-11-25
 
 ### Changed
