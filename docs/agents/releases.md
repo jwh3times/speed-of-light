@@ -15,7 +15,9 @@ and tags the merge commit (`changelog.d/README.md`;
 `VERSION` — the bare `<major>.<minor>.<build>` release line. `Cargo.toml`'s
 `[workspace.package].version` names the same line (`scripts/check-cargo-version.mjs`, run by CI's
 `agents` job); the release build sets it to the tag's full version, so the binaries report it. It
-starts at `0.1.0`.
+starts at `0.1.0`. Merges never edit it: its build is a floor, so it stays `x.y.0` while each
+merge's tag carries the build (`node scripts/next-version.mjs`). Only a new release line changes it,
+through the Bump command.
 
 ## Bump command
 

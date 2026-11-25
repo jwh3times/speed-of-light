@@ -17,6 +17,9 @@ From an open pull request to a merged, released and packaged version. What CI ru
   and read the `CodeQL` check run's summary ("1 new alert…"). A job with no `permissions:` of its
   own, in a workflow with no top-level block, raises `actions/missing-workflow-permissions`; both
   workflows set one, so a new workflow needs it too.
+- **No `CodeQL` check on the head at all also blocks**, as on a PR opened before CodeQL default
+  setup was configured. Closing and reopening the PR does not start an analysis; a new commit does
+  (`git commit --allow-empty`).
 - **The `rust` job runs on `windows-latest`** and takes longer than the ubuntu jobs; a cold cache
   (a `Cargo.lock` change) adds a few minutes. It is the only job that builds the workspace.
 
@@ -51,6 +54,10 @@ step fails when `sol --version` or `sol-service --version` does not print the ta
 means the version stamping (`scripts/check-cargo-version.mjs --set`) did not reach the build. A
 failed `package` job leaves the Release without its zip: re-run that job; `--clobber` replaces any
 partial upload.
+
+**Tags are permanent.** The `Version tags` ruleset blocks updating or deleting any `refs/tags/v*`
+tag, with no bypass actor (`gh api repos/jwh3times/speed-of-light/rulesets/<id>`, the id from
+`gh api repos/jwh3times/speed-of-light/rulesets`), so a mis-stamped tag can't be moved or deleted.
 
 **The stamp commit runs no workflow.** Its `[skip ci]` keeps CI and `Release` off it, so its CodeQL
 analysis is the only run it shows. Nothing deploys from `main`.
