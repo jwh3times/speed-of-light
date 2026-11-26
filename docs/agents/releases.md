@@ -29,3 +29,9 @@ the second time.
 ## Ask before bumping
 
 when ambiguous
+
+## Skipped tags
+
+none
+
+- **Ignore:** `v0.0.0`
