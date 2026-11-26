@@ -15,6 +15,13 @@ released in 0.1.0._
 
 No unreleased changes.
 
+## [0.1.6] - 2026-11-26
+
+### Changed
+
+- The release settings ignore the `v0.0.0` tag, which marks the initial commit and has no changelog
+  section, so the records audit no longer reports it as released without one (#9)
+
 ## [0.1.5] - 2026-11-25
 
 ### Changed
