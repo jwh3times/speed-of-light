@@ -118,14 +118,26 @@ fn read_profile(path: &PathBuf) -> Result<Profile> {
 async fn connect(
     pipe: &str,
 ) -> Result<sol_ipc::framing::Client<tokio::net::windows::named_pipe::NamedPipeClient>> {
-    sol_ipc::pipe::connect(pipe).await.with_context(|| {
+    sol_ipc::pipe::connect(pipe).await.map_err(|e| {
         // Only the default pipe is the installed service's; a custom one is a console session.
-        if pipe == sol_ipc::PIPE_NAME {
+        let why = if pipe == sol_ipc::PIPE_NAME {
             format!("can't reach the service on {pipe}: {}", sol_service::winsvc::installed_state().explain())
         } else {
             format!("can't reach the service on {pipe}. Is `sol-service run --pipe {pipe}` running?")
-        }
+        };
+        unreachable_error(why, e)
     })
+}
+
+/// The error for a pipe `sol` couldn't open. Not found means only that nothing serves the pipe,
+/// which `why` already says; the raw "cannot find the file" error would read like a missing file,
+/// so it is dropped. Any other error (access denied, pipe busy) stays as the cause, where it helps.
+fn unreachable_error(why: String, e: std::io::Error) -> anyhow::Error {
+    if e.kind() == std::io::ErrorKind::NotFound {
+        anyhow::anyhow!(why)
+    } else {
+        anyhow::Error::new(e).context(why)
+    }
 }
 
 async fn call(pipe: &str, req: Request) -> Result<Response> {
@@ -262,4 +274,23 @@ async fn main() -> Result<()> {
         std::process::exit(code);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unreachable_error;
+    use std::io;
+
+    #[test]
+    fn not_found_drops_the_raw_error_and_anything_else_keeps_it() {
+        let not_found = unreachable_error("nothing serves it".into(), io::Error::from_raw_os_error(2));
+        assert_eq!(format!("{not_found:?}"), "nothing serves it");
+
+        // ERROR_ACCESS_DENIED: the raw error says why, so it stays as the cause.
+        let denied = unreachable_error("can't reach it".into(), io::Error::from_raw_os_error(5));
+        let chain: Vec<String> = denied.chain().map(|c| c.to_string()).collect();
+        assert_eq!(chain.len(), 2, "{chain:?}");
+        assert_eq!(chain[0], "can't reach it");
+        assert!(chain[1].contains("os error 5"), "{chain:?}");
+    }
 }
