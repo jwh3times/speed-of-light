@@ -15,6 +15,12 @@ released in 0.1.0._
 
 No unreleased changes.
 
+## [0.2.3] - 2026-11-27
+
+### Changed
+
+- Take the latest shared skills and scripts from `jwh3times/skills` (#13)
+
 ## [0.2.2] - 2026-11-27
 
 ### Changed
