@@ -40,7 +40,7 @@ pub fn probe(simulate: Option<u32>, json: bool) -> Result<()> {
         return Ok(());
     }
     for s in &opened.statuses {
-        println!("{:<12} {:<12} {}", s.backend, s.status, s.detail);
+        println!("{:<12} {:<12} {}", s.backend, s.status.to_string(), s.detail);
     }
     for d in &opened.devices {
         println!();

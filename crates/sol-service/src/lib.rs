@@ -2,12 +2,22 @@
 //! curves, enforces the safety watchdogs and serves clients over IPC.
 //!
 //! [`Service`] is synchronous and transport-free, so the whole control loop is tested against
-//! simulated GPUs (`tests/service.rs`). `main.rs` adds the tokio runtime, the named pipe and
-//! signal handling.
+//! simulated GPUs (`tests/service.rs`). [`host`] adds the tokio runtime and the named pipe,
+//! shared by the console (`sol-service run`) and the Windows service in [`winsvc`].
 
 pub mod backends;
+pub mod cli;
 pub mod conflicts;
+#[cfg(windows)]
+pub mod host;
+pub mod registration;
+#[cfg(windows)]
+pub mod trust;
+#[cfg(windows)]
+pub mod winsvc;
 
+use backends::Opened;
+use conflicts::Conflict;
 use sol_core::backend::{DeviceError, GpuDevice};
 use sol_core::compat::{CompatMatrix, Feature};
 use sol_core::crashguard::{CrashGuard, Sentinel};
@@ -16,9 +26,16 @@ use sol_core::fan::{FanCommand, FanController};
 use sol_core::profile::{FanSetting, Profile};
 use sol_core::tuner::{self, ApplyReport, Outcome, SafetyPolicy};
 use sol_core::units::{Celsius, Percent};
-use sol_ipc::{DeviceStatus, FanModeView, PROTOCOL_VERSION, Request, Response};
+use sol_ipc::{BackendStatus, DeviceStatus, FanModeView, PROTOCOL_VERSION, Request, Response};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+
+/// First wait before opening the backends again when no GPU was ready.
+pub const RETRY_FIRST: Duration = Duration::from_secs(2);
+/// The wait doubles after each miss, up to this.
+pub const RETRY_MAX: Duration = Duration::from_secs(30);
+/// How often running tools are checked for ones that fight over the same fans and clocks.
+pub const CONFLICT_RECHECK: Duration = Duration::from_secs(30);
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -34,9 +51,44 @@ const MAX_NOTICES: usize = 20;
 pub struct ServiceConfig {
     pub state_dir: PathBuf,
     pub policy: SafetyPolicy,
-    pub startup_profile: Option<PathBuf>,
+    pub startup_profile: Option<StartupProfile>,
     /// How long an applied profile must survive before the crash guard disarms.
     pub stability_window: Duration,
+}
+
+/// The startup profile as the host read it. The host decides whether the file can be trusted
+/// (in service mode: only administrators can change it); the service only acts on the verdict.
+#[derive(Debug, Clone)]
+pub enum StartupProfile {
+    Trusted(Profile),
+    /// Not applied, for this reason (unreadable, invalid, or writable by non-admins).
+    Rejected(String),
+}
+
+/// Where the service gets its GPUs. Polled until one is found (see [`RETRY_FIRST`]).
+pub trait DeviceSource: Send {
+    /// Try every backend once.
+    fn open(&mut self) -> Opened;
+}
+
+impl<F: FnMut() -> Opened + Send> DeviceSource for F {
+    fn open(&mut self) -> Opened {
+        self()
+    }
+}
+
+type ConflictDetector = Box<dyn FnMut() -> Vec<Conflict> + Send>;
+
+#[derive(Debug, Clone, Copy)]
+enum Acquire {
+    /// No GPU yet, and some backend is worth trying again after `wait`.
+    Waiting {
+        wait: Duration,
+        waited: Duration,
+    },
+    Found,
+    /// No GPU, and no backend is worth trying again: status only.
+    GaveUp,
 }
 
 #[derive(Debug)]
@@ -107,19 +159,29 @@ pub struct Service {
     guard: CrashGuard,
     tripped: Option<Sentinel>,
     armed_at: Option<Instant>,
+    source: Box<dyn DeviceSource>,
+    backends: Vec<BackendStatus>,
+    acquire: Acquire,
+    conflicts: Option<ConflictDetector>,
+    since_conflict_check: Duration,
+    /// Conflicting tools seen running at the last check.
+    running_conflicts: Vec<Conflict>,
 }
 
 impl std::fmt::Debug for Service {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Service")
             .field("devices", &self.devices.len())
+            .field("acquire", &self.acquire)
             .field("tripped", &self.tripped)
             .finish()
     }
 }
 
 impl Service {
-    pub fn new(devices: Vec<Box<dyn GpuDevice>>, cfg: ServiceConfig, matrix: CompatMatrix) -> Self {
+    /// Opens `source` once now, and again from [`Service::tick`] with backoff until it finds a
+    /// GPU. Each GPU found gets the startup takeover, then the startup profile is applied.
+    pub fn new(source: impl DeviceSource + 'static, cfg: ServiceConfig, matrix: CompatMatrix) -> Self {
         let guard = CrashGuard::new(cfg.state_dir.join("crash-guard.json"));
         let tripped = match guard.check() {
             Ok(t) => t,
@@ -128,7 +190,75 @@ impl Service {
                 Some(Sentinel { profile: "<unreadable>".into(), armed_at_unix: 0, pid: 0 })
             }
         };
-        let mut svc = Service { devices: Vec::new(), cfg, matrix, guard, tripped, armed_at: None };
+        let mut svc = Service {
+            devices: Vec::new(),
+            cfg,
+            matrix,
+            guard,
+            tripped,
+            armed_at: None,
+            source: Box::new(source),
+            backends: Vec::new(),
+            acquire: Acquire::Waiting { wait: Duration::ZERO, waited: Duration::ZERO },
+            conflicts: None,
+            since_conflict_check: CONFLICT_RECHECK,
+            running_conflicts: Vec::new(),
+        };
+        svc.poll_devices();
+        svc
+    }
+
+    /// A service over devices that are already open (tests, and anything that can't wait).
+    pub fn with_devices(devices: Vec<Box<dyn GpuDevice>>, cfg: ServiceConfig, matrix: CompatMatrix) -> Self {
+        let mut devices = Some(devices);
+        Service::new(
+            move || Opened { devices: devices.take().unwrap_or_default(), statuses: Vec::new() },
+            cfg,
+            matrix,
+        )
+    }
+
+    /// Check for other tuning tools from [`Service::tick`], every [`CONFLICT_RECHECK`].
+    pub fn with_conflict_detector(mut self, detect: impl FnMut() -> Vec<Conflict> + Send + 'static) -> Self {
+        self.conflicts = Some(Box::new(detect));
+        self
+    }
+
+    fn poll_devices(&mut self) {
+        let Acquire::Waiting { wait, .. } = self.acquire else { return };
+        let opened = self.source.open();
+        let retry = opened.worth_retrying();
+        self.backends = opened.statuses;
+        if !opened.devices.is_empty() {
+            self.acquire = Acquire::Found;
+            self.adopt(opened.devices);
+            self.apply_startup_profile();
+        } else if retry {
+            let wait = if wait.is_zero() { RETRY_FIRST } else { (wait * 2).min(RETRY_MAX) };
+            tracing::info!(retry_in = ?wait, "no GPU ready yet");
+            self.acquire = Acquire::Waiting { wait, waited: Duration::ZERO };
+        } else {
+            self.acquire = Acquire::GaveUp;
+            tracing::warn!("no controllable GPUs found; serving status only");
+        }
+    }
+
+    fn apply_startup_profile(&mut self) {
+        match self.startup() {
+            Ok(reports) => {
+                for r in reports {
+                    tracing::info!(device = %r.device, profile = %r.profile, applied = r.all_applied(), "startup profile");
+                }
+            }
+            Err(e) => {
+                for m in &mut self.devices {
+                    m.notice(format!("startup profile not applied: {e}"));
+                }
+            }
+        }
+    }
+
+    fn adopt(&mut self, devices: Vec<Box<dyn GpuDevice>>) {
         for dev in devices {
             let caps = match dev.capabilities() {
                 Ok(c) => Some(c),
@@ -153,18 +283,26 @@ impl Service {
             {
                 tracing::debug!(device = %m.dev.info().id, error = %e, "could not reset fans at startup");
             }
-            svc.devices.push(m);
+            // Tools seen while waiting for the driver (they start at login) concern this GPU too.
+            for c in &self.running_conflicts {
+                m.notice(conflict_notice(c));
+            }
+            self.devices.push(m);
         }
-        svc
     }
 
     pub fn tripped(&self) -> Option<&Sentinel> {
         self.tripped.as_ref()
     }
 
-    /// Apply the configured startup profile, unless the crash guard tripped.
+    /// Apply the configured startup profile, unless it was rejected or the crash guard
+    /// tripped. Runs by itself once GPUs are found; call it again after `sol guard clear`.
     pub fn startup(&mut self) -> Result<Vec<ApplyReport>, String> {
-        let Some(path) = self.cfg.startup_profile.clone() else { return Ok(Vec::new()) };
+        let profile = match &self.cfg.startup_profile {
+            None => return Ok(Vec::new()),
+            Some(StartupProfile::Rejected(reason)) => return Err(reason.clone()),
+            Some(StartupProfile::Trusted(p)) => p.clone(),
+        };
         if let Some(t) = &self.tripped {
             return Err(format!(
                 "crash guard tripped: profile {:?} did not survive its stability window last time. \
@@ -172,9 +310,6 @@ impl Service {
                 t.profile
             ));
         }
-        let text =
-            std::fs::read_to_string(&path).map_err(|e| format!("can't read {}: {e}", path.display()))?;
-        let profile = Profile::from_toml(&text).map_err(|e| e.to_string())?;
         Ok(self.apply(&profile, false))
     }
 
@@ -189,6 +324,7 @@ impl Service {
             Request::Status => Response::Status {
                 devices: self.devices.iter().map(Managed::status).collect(),
                 guard: self.tripped.clone(),
+                backends: self.backends.clone(),
             },
             Request::ApplyProfile { profile, allow_unverified } => match profile.validate() {
                 Err(e) => Response::Error { message: e.to_string() },
@@ -293,8 +429,18 @@ impl Service {
         reports
     }
 
-    /// One control-loop iteration: read telemetry, run fan curves, enforce watchdogs.
+    /// One control-loop iteration: look for GPUs if none are open yet, read telemetry, run fan
+    /// curves, enforce watchdogs, and check for other tuning tools.
     pub fn tick(&mut self, dt: Duration) {
+        if let Acquire::Waiting { wait, waited } = self.acquire {
+            let waited = waited + dt;
+            self.acquire = Acquire::Waiting { wait, waited };
+            if waited >= wait {
+                self.poll_devices();
+            }
+        }
+        self.tick_conflicts(dt);
+
         for m in &mut self.devices {
             match m.dev.telemetry() {
                 Ok(t) => {
@@ -369,7 +515,37 @@ impl Service {
         }
     }
 
+    fn tick_conflicts(&mut self, dt: Duration) {
+        let Some(detect) = self.conflicts.as_mut() else { return };
+        self.since_conflict_check += dt;
+        if self.since_conflict_check < CONFLICT_RECHECK {
+            return;
+        }
+        self.since_conflict_check = Duration::ZERO;
+        let found: Vec<Conflict> = detect().into_iter().filter(Conflict::blocks_writes).collect();
+
+        let mut messages = Vec::new();
+        for c in &found {
+            if !self.running_conflicts.iter().any(|r| r.tool == c.tool) {
+                messages.push(conflict_notice(c));
+            }
+        }
+        for gone in self.running_conflicts.iter().filter(|r| !found.iter().any(|c| c.tool == r.tool)) {
+            messages.push(format!("{} is no longer running", gone.tool));
+        }
+        self.running_conflicts = found;
+        for msg in messages {
+            if self.devices.is_empty() {
+                tracing::warn!("{msg}");
+            }
+            for m in &mut self.devices {
+                m.notice(msg.clone());
+            }
+        }
+    }
+
     /// Graceful stop: hand software-controlled fans back to firmware and disarm the guard.
+    /// Power and clock settings stay applied; only [`reset_to_stock`] (uninstall) removes them.
     pub fn shutdown(&mut self) {
         for m in &mut self.devices {
             if !matches!(m.fan, FanMode::Firmware) {
@@ -380,4 +556,54 @@ impl Service {
             tracing::error!(error = %e, "can't disarm the crash guard on shutdown");
         }
     }
+}
+
+fn conflict_notice(c: &Conflict) -> String {
+    format!("{} is running ({}); it will fight this service over the same fans and clocks", c.tool, c.process)
+}
+
+/// What [`reset_to_stock`] did.
+#[derive(Debug, Default)]
+pub struct StockReset {
+    pub reports: Vec<ApplyReport>,
+    /// One line per GPU that isn't verifiably back at stock, or why nothing could be reset.
+    pub failures: Vec<String>,
+}
+
+impl StockReset {
+    /// Every GPU was reset and read back at stock, and there was at least one.
+    pub fn ok(&self) -> bool {
+        self.failures.is_empty()
+    }
+}
+
+/// Return every device to stock (default power limit, zero offsets, firmware control), as
+/// uninstall does. Like every reset it is never gated by the compatibility matrix.
+pub fn reset_to_stock(devices: Vec<Box<dyn GpuDevice>>) -> StockReset {
+    let mut out = StockReset::default();
+    if devices.is_empty() {
+        out.failures.push("no GPU could be opened to reset".into());
+    }
+    for mut dev in devices {
+        let id = dev.info().id.clone();
+        let caps = match dev.capabilities() {
+            Ok(c) => c,
+            Err(e) => {
+                out.failures.push(format!("{id}: capabilities unavailable ({e}); not reset"));
+                continue;
+            }
+        };
+        let report = tuner::reset(dev.as_mut(), &caps);
+        let failed: Vec<String> = report
+            .items
+            .iter()
+            .filter(|i| !i.outcome.is_success())
+            .map(|i| format!("{} ({:?})", i.item, i.outcome))
+            .collect();
+        if !failed.is_empty() {
+            out.failures.push(format!("{id}: not back at stock: {}", failed.join("; ")));
+        }
+        out.reports.push(report);
+    }
+    out
 }

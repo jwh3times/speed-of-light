@@ -6,7 +6,8 @@
 **Open, vendor-neutral GPU tuning, fan control and monitoring for Windows. It's built to be the
 safe default that replaces MSI Afterburner.**
 
-> **Status: pre-alpha.** NVIDIA monitoring works and is verified on real hardware. Power limit,
+> **Status: pre-alpha.** NVIDIA monitoring works and is verified on real hardware. The service
+> installs as a Windows service. Power limit,
 > clock offset and fan control are implemented and tested against a simulated GPU, but they
 > haven't been verified on any driver yet, so they stay blocked unless you opt in with
 > `--allow-unverified`. There's no GUI or in-game overlay yet.
@@ -87,9 +88,26 @@ sol watch
 sol reset
 ```
 
-To control a real GPU, run `sol-service run` from an **elevated** terminal. Close Afterburner,
+To control a real GPU, install the service from an **elevated** terminal. Close Afterburner,
 Fan Control and other tuning tools first: two tools driving the same fans fight each other.
-`sol probe` lists any that are still running.
+`sol probe` lists any that are still running, and the service warns while one is.
+
+```powershell
+# Elevated. Installs (or upgrades) the Windows service and starts it.
+sol-service install --startup-profile examples\profiles\quiet-curve.toml
+sol status                            # from any terminal
+
+# Elevated. Stops it, returns every GPU to stock, and removes it.
+sol-service uninstall                 # --purge also deletes the logs and crash guard
+```
+
+The service starts at boot and Windows restarts it within seconds if it dies. Each start hands
+the fans back to firmware control before anything else. It runs from a copy in
+`%ProgramFiles%\SpeedOfLight`. Its startup profile is a copy kept in `%ProgramData%\SpeedOfLight`
+(with the logs), so to change the profile, edit your file and run `install` again.
+`sol-service install` takes `--allow-unverified`, `--tick-ms`, `--stability-secs` and
+`--log-level` like `run` does. For a console session instead, use `sol-service run` from an
+elevated terminal while the service isn't running.
 
 ### Profiles
 

@@ -21,7 +21,7 @@
       Control closed). Commit the first `verified` write entries.
 - [ ] Recruit testers for Turing, Ada, Blackwell and laptops. Hardware-report issue template.
 - [ ] Record/replay device for turning user bug reports into CI regression tests.
-- [ ] Run as a real Windows service (`windows-service` crate) with automatic restart.
+- [x] Run as a real Windows service (`windows-service` crate) with automatic restart.
       Install/uninstall commands.
 - [ ] Config file (`%ProgramData%\SpeedOfLight\config.toml`) for policy, startup profile and
       tick rate.

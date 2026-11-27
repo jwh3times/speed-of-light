@@ -115,10 +115,21 @@ fn read_profile(path: &PathBuf) -> Result<Profile> {
     Ok(Profile::from_toml(&text)?)
 }
 
+async fn connect(
+    pipe: &str,
+) -> Result<sol_ipc::framing::Client<tokio::net::windows::named_pipe::NamedPipeClient>> {
+    sol_ipc::pipe::connect(pipe).await.with_context(|| {
+        // Only the default pipe is the installed service's; a custom one is a console session.
+        if pipe == sol_ipc::PIPE_NAME {
+            format!("can't reach the service on {pipe}: {}", sol_service::winsvc::installed_state().explain())
+        } else {
+            format!("can't reach the service on {pipe}. Is `sol-service run --pipe {pipe}` running?")
+        }
+    })
+}
+
 async fn call(pipe: &str, req: Request) -> Result<Response> {
-    let mut client = sol_ipc::pipe::connect(pipe)
-        .await
-        .with_context(|| format!("can't reach the service on {pipe}. Is `sol-service run` running?"))?;
+    let mut client = connect(pipe).await?;
     match client.call(&Request::Hello { protocol: PROTOCOL_VERSION }).await? {
         Response::Hello { .. } => {}
         Response::Error { message } => bail!("{message}"),
@@ -143,8 +154,11 @@ fn print_response(resp: &Response, json: bool) -> Result<i32> {
             }
             if reports.iter().all(|r| r.all_applied()) && !reports.is_empty() { 0 } else { 2 }
         }
-        Response::Status { devices, guard } => {
+        Response::Status { devices, guard, backends } => {
             if !json {
+                if let Some(line) = format::backends_line(backends, devices.is_empty()) {
+                    println!("{line}\n");
+                }
                 if let Some(g) = guard {
                     println!(
                         "! crash guard tripped by profile {:?}: startup profile skipped. `sol guard clear` to reset.\n",
@@ -201,7 +215,7 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         Command::Watch { interval_ms } => {
-            let mut client = sol_ipc::pipe::connect(&cli.pipe).await.context("can't reach the service")?;
+            let mut client = connect(&cli.pipe).await?;
             client.call(&Request::Hello { protocol: PROTOCOL_VERSION }).await?;
             let mut tick = tokio::time::interval(Duration::from_millis(interval_ms.max(100)));
             loop {

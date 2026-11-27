@@ -32,10 +32,12 @@ impl NvidiaBackend {
             Err(NvmlError::LibloadingError(e)) => {
                 Err(BackendError::NotPresent(format!("NVML not found (no NVIDIA driver?): {e}")))
             }
+            // nvml.dll is installed with the driver, so a driver that isn't loaded or an init
+            // failure is most likely the driver still starting at boot.
             Err(NvmlError::DriverNotLoaded) => {
-                Err(BackendError::NotPresent("NVIDIA driver is not loaded".into()))
+                Err(BackendError::NotReady("NVIDIA driver is not loaded".into()))
             }
-            Err(e) => Err(BackendError::Init(format!("NVML init failed: {e}"))),
+            Err(e) => Err(BackendError::NotReady(format!("NVML init failed: {e}"))),
         }
     }
 
@@ -50,7 +52,7 @@ impl Backend for NvidiaBackend {
     }
 
     fn devices(&mut self) -> Result<Vec<Box<dyn GpuDevice>>, BackendError> {
-        let count = self.nvml.device_count().map_err(|e| BackendError::Init(e.to_string()))?;
+        let count = self.nvml.device_count().map_err(|e| BackendError::NotReady(e.to_string()))?;
         let driver = self.nvml.sys_driver_version().ok();
         let mut out: Vec<Box<dyn GpuDevice>> = Vec::new();
         for index in 0..count {

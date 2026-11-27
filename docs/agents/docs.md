@@ -41,6 +41,9 @@
   missing. Update when a backend starts or stops using a vendor API (`crates/sol-nvidia/`,
   `sol-amd/`, `sol-intel/`).
 - `docs/landscape.md`: competitors and the positioning this project takes. `owner-only`.
+- `GLOSSARY.md`: the project's domain language (service, startup takeover, firmware control,
+  crash guard, …), one tight definition per term with the words to avoid. No implementation
+  detail. Update when a design session settles a term (`domain-modeling` skill).
 - `docs/adr/*.md`: architecture decision records, one decision each with the reason it was made.
   Add one when a decision is hard to reverse and would surprise a reader; supersede rather than
   rewrite.
