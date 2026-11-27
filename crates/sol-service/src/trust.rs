@@ -119,6 +119,7 @@ mod win {
     use std::io;
     use std::os::windows::ffi::OsStrExt;
     use std::path::Path;
+    use std::ptr::NonNull;
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, LUID, LocalFree};
     use windows_sys::Win32::Security::Authorization::{
         ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, GetNamedSecurityInfoW,
@@ -127,8 +128,8 @@ mod win {
     };
     use windows_sys::Win32::Security::{
         ACCESS_ALLOWED_ACE, ACE_HEADER, ACL, AdjustTokenPrivileges, DACL_SECURITY_INFORMATION, GetAce,
-        GetSecurityDescriptorControl, GetSecurityDescriptorDacl, GetSecurityDescriptorOwner,
-        INHERIT_ONLY_ACE, INHERITED_ACE, LUID_AND_ATTRIBUTES, LookupPrivilegeValueW,
+        GetLengthSid, GetSecurityDescriptorControl, GetSecurityDescriptorDacl, GetSecurityDescriptorOwner,
+        INHERIT_ONLY_ACE, INHERITED_ACE, IsValidSid, LUID_AND_ATTRIBUTES, LookupPrivilegeValueW,
         OWNER_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
         SE_DACL_PROTECTED, SE_PRIVILEGE_ENABLED, TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY,
     };
@@ -199,43 +200,74 @@ mod win {
             return Err(io::Error::last_os_error());
         }
         let mut entries = Vec::new();
-        if dacl.is_null() {
-            // A NULL DACL grants everyone everything.
-            entries.push(Entry {
-                sid: "S-1-1-0".into(),
-                allow: true,
-                mask: u32::MAX,
-                inherited: false,
-                inherit_only: false,
-            });
-        } else {
-            // SAFETY: `dacl` is non-null and points into `sd`.
-            let count = unsafe { (*dacl).AceCount };
-            for i in 0..u32::from(count) {
-                let mut ace: *mut c_void = std::ptr::null_mut();
-                // SAFETY: `i` is below the ACL's AceCount; `ace` is a valid out-pointer.
-                if unsafe { GetAce(dacl, i, &mut ace) } == 0 {
-                    return Err(io::Error::last_os_error());
-                }
-                // SAFETY: every ACE starts with an ACE_HEADER.
-                let header = unsafe { *(ace as *const ACE_HEADER) };
-                if header.AceType != ACCESS_ALLOWED && header.AceType != ACCESS_DENIED {
-                    continue; // object and callback ACEs don't occur on plain files.
-                }
-                // Allowed and denied ACEs share ACCESS_ALLOWED_ACE's layout.
-                let ace = ace as *const ACCESS_ALLOWED_ACE;
-                // SAFETY: `ace` is an ACCESS_ALLOWED/DENIED ACE, so the SID starts at SidStart.
-                let (mask, sid) = unsafe { ((*ace).Mask, std::ptr::addr_of!((*ace).SidStart) as PSID) };
+        match NonNull::new(dacl) {
+            None => {
+                // A NULL DACL grants everyone everything.
                 entries.push(Entry {
-                    sid: sid_string(sid)?,
-                    allow: header.AceType == ACCESS_ALLOWED,
-                    mask,
-                    inherited: u32::from(header.AceFlags) & INHERITED_ACE != 0,
-                    inherit_only: u32::from(header.AceFlags) & INHERIT_ONLY_ACE != 0,
+                    sid: "S-1-1-0".into(),
+                    allow: true,
+                    mask: u32::MAX,
+                    inherited: false,
+                    inherit_only: false,
                 });
             }
+            Some(dacl) => {
+                // SAFETY: `dacl` is non-null and points at the ACL inside `sd`, which `_free`
+                // keeps alive until this function returns. The ACL header may be unaligned.
+                let count = unsafe { dacl.as_ptr().read_unaligned() }.AceCount;
+                for i in 0..u32::from(count) {
+                    entries.extend(read_ace(dacl, i)?);
+                }
+            }
         }
-        Ok(Acl { owner: sid_string(owner)?, protected: control & SE_DACL_PROTECTED != 0, entries })
+        let owner = NonNull::new(owner).ok_or_else(|| invalid("the file has no owner"))?;
+        Ok(Acl { owner: sid_string(owner.as_ptr())?, protected: control & SE_DACL_PROTECTED != 0, entries })
+    }
+
+    fn invalid(what: &str) -> io::Error {
+        io::Error::new(io::ErrorKind::InvalidData, what.to_string())
+    }
+
+    /// Entry `i` of `dacl`, or `None` for ACE types that don't occur on plain files (object and
+    /// callback ACEs). Every read is bounds-checked against the ACE's own size.
+    fn read_ace(dacl: NonNull<ACL>, i: u32) -> io::Result<Option<Entry>> {
+        let mut raw: *mut c_void = std::ptr::null_mut();
+        // SAFETY: `dacl` is a valid ACL and `i` is below its AceCount; `raw` is a valid
+        // out-pointer.
+        if unsafe { GetAce(dacl.as_ptr(), i, &mut raw) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let ace = NonNull::new(raw.cast::<u8>()).ok_or_else(|| invalid("GetAce returned no entry"))?;
+        // SAFETY: GetAce succeeded, so `ace` points at an ACE inside the ACL, and every ACE starts
+        // with an ACE_HEADER. Read unaligned: nothing promises the header's alignment.
+        let header = unsafe { ace.cast::<ACE_HEADER>().as_ptr().read_unaligned() };
+        if header.AceType != ACCESS_ALLOWED && header.AceType != ACCESS_DENIED {
+            return Ok(None);
+        }
+        // Allowed and denied ACEs share ACCESS_ALLOWED_ACE's layout: header, mask, then the SID.
+        let size = usize::from(header.AceSize);
+        let sid_at = std::mem::offset_of!(ACCESS_ALLOWED_ACE, SidStart);
+        let mask_at = std::mem::offset_of!(ACCESS_ALLOWED_ACE, Mask);
+        if size < sid_at + 8 {
+            return Err(invalid("an access entry is too short to hold a SID"));
+        }
+        // SAFETY: `mask_at + 4 <= sid_at < size`, so the mask lies inside this ACE.
+        let mask = unsafe { ace.as_ptr().add(mask_at).cast::<u32>().read_unaligned() };
+        // SAFETY: `sid_at < size`, so the SID starts inside this ACE.
+        let sid: PSID = unsafe { ace.as_ptr().add(sid_at) }.cast();
+        // SAFETY: `sid` points inside the ACE; IsValidSid and GetLengthSid only read the SID's
+        // revision and sub-authority count before the length is checked against the ACE.
+        let fits = unsafe { IsValidSid(sid) != 0 && GetLengthSid(sid) as usize <= size - sid_at };
+        if !fits {
+            return Err(invalid("an access entry holds an invalid SID"));
+        }
+        Ok(Some(Entry {
+            sid: sid_string(sid)?,
+            allow: header.AceType == ACCESS_ALLOWED,
+            mask,
+            inherited: u32::from(header.AceFlags) & INHERITED_ACE != 0,
+            inherit_only: u32::from(header.AceFlags) & INHERIT_ONLY_ACE != 0,
+        }))
     }
 
     /// Set `path`'s DACL (always protected) from `sddl`, and its owner too with `set_owner`.
