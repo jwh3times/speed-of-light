@@ -18,8 +18,8 @@ desktop, so the strategy is layered. Each layer catches what the one below can't
   the rule behind `run`'s refusal while the installed service owns the GPUs, and the
   startup-profile trust check
   against real ACLs on temporary files.
-- `sol-cli`: what `sol` prints when nothing serves the pipe, by running the real `sol` binary
-  against an unserved pipe name.
+- `sol-cli`, by running the real `sol` binary: what it prints when nothing serves the pipe (an
+  unserved pipe name), and that its text output through a pipe is UTF-8.
 
 ## Layer 2: closed-loop simulation (hermetic, every PR)
 
