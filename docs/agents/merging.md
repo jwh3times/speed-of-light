@@ -17,6 +17,13 @@ From an open pull request to a merged, released and packaged version. What CI ru
   and read the `CodeQL` check run's summary ("1 new alert…"). A job with no `permissions:` of its
   own, in a workflow with no top-level block, raises `actions/missing-workflow-permissions`; both
   workflows set one, so a new workflow needs it too.
+- **A new alert is a stop for `land`.** Fixing it is a branch change, and dismissing it is the
+  user's call. On PR #37, `rust/access-invalid-pointer` (high) blocked the merge with every
+  required check green: it flagged three raw-pointer reads in `trust.rs`'s ACL walk, on pointers
+  that Win32 out-parameters (`GetNamedSecurityInfoW`, `GetAce`) fill and that start as
+  `null_mut()`. It cleared with no dismissal once each system-returned pointer became a `NonNull`
+  before use, ACE fields were read with `read_unaligned` at offsets checked against the ACE's
+  `AceSize`, and each SID was validated (`IsValidSid`, `GetLengthSid` within the entry).
 - **No `CodeQL` check on the head at all also blocks**, as on a PR opened before CodeQL default
   setup was configured. Closing and reopening the PR does not start an analysis; a new commit does
   (`git commit --allow-empty`).
