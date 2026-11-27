@@ -15,6 +15,15 @@ released in 0.1.0._
 
 No unreleased changes.
 
+## [0.2.5] - 2026-11-27
+
+### Fixed
+
+- The README's new Scripts section explains why `°C` shows as `┬░C` when PowerShell captures
+  `sol`'s text output on a console's default code page. `sol` writes UTF-8, and PowerShell decodes
+  it with the console's code page. Scripts should use `--json`, which carries temperatures as
+  numbers, or set `[Console]::OutputEncoding = [Text.Encoding]::UTF8` before capturing text (#38)
+
 ## [0.2.4] - 2026-11-27
 
 ### Fixed
