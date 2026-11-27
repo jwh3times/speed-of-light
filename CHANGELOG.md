@@ -15,6 +15,13 @@ released in 0.1.0._
 
 No unreleased changes.
 
+## [0.2.2] - 2026-11-27
+
+### Changed
+
+- `ROADMAP.md` lists the Windows service under "Done (0.2.0)", and `docs/testing.md` links the
+  acceptance run's own wiki page.
+
 ## [0.2.1] - 2026-11-27
 
 ### Changed
