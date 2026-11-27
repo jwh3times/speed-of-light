@@ -56,7 +56,10 @@ Once a PR is open, read [docs/agents/merging.md](docs/agents/merging.md).
 - `crates/sol-nvidia`: NVML backend. `sol-amd` / `sol-intel`: detection stubs.
 - `crates/sol-ipc`: protocol types, JSON-lines framing, named pipe with a restrictive DACL.
 - `crates/sol-service`: `Service` (sync, transport-free, tested in `tests/service.rs`) plus
-  `main.rs` (tokio, pipe, Ctrl+C). Also `backends` (open all vendors) and `conflicts`.
+  `host` (tokio, pipe), shared by `run` in a console and the Windows service in `winsvc`
+  (`install` / `uninstall` and what the SCM starts). Also `cli` (the `sol-service` command line),
+  `registration` (the service's registration as data), `trust` (the state folder's ACL),
+  `backends` (open all vendors) and `conflicts`.
 - `crates/sol-cli`: `sol`. Service-backed commands plus direct `probe` / `doctor` / `selftest`.
 - `compat/matrix.toml`: compiled into `sol-core`. Entries need evidence.
 
@@ -77,7 +80,9 @@ Once a PR is open, read [docs/agents/merging.md](docs/agents/merging.md).
 5. **Tests never write to real hardware.** Live tests are `#[ignore]` and read-only. Anything
    that writes uses `sol_core::sim::SimulatedGpu`. Never run `sol selftest --write`, `sol apply`
    or a real (non-`--simulate`) service against the user's GPU without asking them first,
-   especially while other tuning tools are running.
+   especially while other tuning tools are running. The same goes for `sol-service install` and
+   `uninstall`, even with `--simulate`: they register or remove a service on the user's machine,
+   and uninstalling a real (non-`--simulate`) install resets every GPU to stock.
 6. **Compat matrix entries need evidence**: a hardware-report issue link or `selftest` output.
    Never add a `verified` entry you didn't observe. The build rejects entries with empty
    evidence.

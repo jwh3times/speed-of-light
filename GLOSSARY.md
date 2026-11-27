@@ -35,8 +35,9 @@ A named set of power, clock and fan settings to apply to a GPU.
 _Avoid_: preset, config
 
 **Startup profile**:
-The one profile the service applies when it starts. It is an administrator-owned copy taken at
-install time, never the user's own file.
+The one profile the service applies when it starts. For the installed service it is an
+administrator-owned copy taken at install time, never the user's own file; a console session
+reads the file it was given.
 _Avoid_: boot profile, default profile
 
 **Stock**:

@@ -15,8 +15,8 @@ Change an invariant only alongside its test.
 | Returning to stock is never blocked by the matrix | `tuner::reset` | `tuner::tests::reset_restores_stock_and_verifies_it`, `service::reset_returns_to_stock` |
 | Uninstall returns every GPU to stock, and says so when it can't | `reset_to_stock` | `service::uninstall_returns_every_gpu_to_stock`, `service::uninstall_reports_a_gpu_it_could_not_reset` |
 | Uninstalling a `--simulate` install writes to no real GPU; any other (or unreadable) install is reset | `registration::uninstall_resets_real_gpus` | `registration::tests::uninstalling_a_simulated_install_touches_no_real_gpu` |
-| The installed service applies no startup profile a non-administrator could have changed | `trust::untrusted_reason` + `Service::startup` | `trust::tests::a_file_users_can_write_is_exposed`, `trust::tests::a_file_owned_by_a_standard_user_is_not_trusted`, `service::a_rejected_startup_profile_is_not_applied_and_a_notice_says_why` |
-| `install` takes the state folder back from whoever created it | `trust::harden_dir` | `trust::tests::hardening_a_folder_protects_it_and_clears_explicit_entries_below_it` (the owner change needs elevation: checked by the acceptance run) |
+| The installed service applies no startup profile a non-administrator could have changed | `trust::untrusted_reason` + `Service::startup` | `trust::tests::a_file_users_can_write_is_exposed`, `trust::tests::a_profile_owned_by_a_standard_user_is_not_trusted_even_if_its_entries_are_locked_down`, `trust::tests::a_file_in_a_folder_users_can_write_is_exposed_even_if_the_file_is_locked_down`, `trust::tests::a_profile_only_administrators_can_change_is_trusted`, `service::a_rejected_startup_profile_is_not_applied_and_a_notice_says_why` |
+| `install` takes the state folder back from whoever created it | `trust::harden_dir` | `trust::tests::hardening_a_folder_protects_it_and_clears_explicit_entries_below_it` (the owner change needs elevation: checked by the [acceptance run](testing.md#service-acceptance-run-manual-elevated-simulated-gpus)) |
 | The startup profile waits for a GPU that is ready, and nothing touches a GPU before it is found | `Service::new` / `Service::tick` | `service::the_startup_profile_waits_for_a_gpu_that_is_not_ready_yet` |
 | Profiles with unknown keys are rejected (a typo must not silently do nothing) | `profile` (`deny_unknown_fields`) | `profile::tests::rejects_typos` |
 
@@ -35,7 +35,7 @@ Change an invariant only alongside its test.
 | A curve actually keeps a loaded GPU cool (closed-loop, simulated physics) | service + sim | `service::fan_curve_keeps_a_loaded_gpu_out_of_thermal_slowdown` |
 | Requested duty below the driver minimum is *raised*, never lowered | `FanCaps::clamp` | `tuner::tests::fixed_fan_is_raised_to_driver_minimum` |
 | Service start takes fans back to firmware (a previous instance may have died mid-curve) | `Service::new` | `service::startup_takes_fans_back_from_a_dead_previous_instance` |
-| Graceful stop hands fans back to firmware, whether it comes from Ctrl+C, a Windows stop request or system shutdown | `Service::shutdown`, reached from `host::run` | `service::graceful_shutdown_returns_fans_and_disarms_the_guard` (the Windows stop path: acceptance run) |
+| Graceful stop hands fans back to firmware, whether it comes from Ctrl+C, a Windows stop request or system shutdown | `Service::shutdown`, reached from `host::run` | `service::graceful_shutdown_returns_fans_and_disarms_the_guard` (the Windows stop path: [acceptance run](testing.md#service-acceptance-run-manual-elevated-simulated-gpus)) |
 | A killed service is restarted within seconds, and its startup takeover hands the fans back | `registration::registration` (recovery actions) | `registration::tests::a_dead_service_is_restarted_within_seconds_every_time` |
 | Another tuning tool that starts later is reported, and the service keeps driving its fans | `Service::tick` | `service::a_tuning_tool_started_after_the_service_gets_a_notice_and_fan_writes_continue`, `service::a_tuning_tool_seen_before_the_gpu_is_ready_is_reported_on_the_gpu_found_later` |
 | A console `run` doesn't open real GPUs while the installed service owns them (its startup takeover would pull the fans off the service's curve) | `winsvc::console_may_open_real_gpus` | `winsvc::tests::a_console_run_refuses_real_gpus_while_the_installed_service_owns_them` |
@@ -56,7 +56,7 @@ tripped (`crashguard::tests::corrupt_sentinel_still_counts_as_armed`).
 
 ## Known gaps
 
-These are tracked in ROADMAP.md:
+These are tracked in ROADMAP.md, or in the issue named:
 
 - **Killed between restarts.** If the installed service is killed while a curve or fixed duty is
   active, the fans stay at the last duty for the seconds until Windows restarts it (2 s, 2 s,

@@ -5,7 +5,8 @@
 - `README.md`: what Speed of Light is, how to download and run a release, the CLI's main commands,
   building from source, and "Help verify your GPU"; for users and contributors. Update when a
   `sol` or `sol-service` command or flag changes (`crates/sol-cli/src/main.rs`,
-  `crates/sol-service/src/main.rs`), when the release zip's contents change
+  `crates/sol-service/src/cli.rs`), what `install` sets up changes
+  (`crates/sol-service/src/winsvc.rs`, `registration.rs`), when the release zip's contents change
   (`.github/workflows/release.yml`'s `package` job), or when a build step or the toolchain pin
   (`rust-toolchain.toml`) changes.
 - `ROADMAP.md`: what is done and what comes next. Update its "Done" list when a feature lands;
@@ -27,11 +28,12 @@
   cite. `owner-only`.
 - `docs/architecture.md`: the process model, the data flow between CLI, service and backends, and
   why Rust. Update when a crate is added or its role changes (`Cargo.toml` members), or the
-  service's process model or IPC transport does (`crates/sol-service/src/main.rs`,
-  `crates/sol-ipc/`).
+  service's process model, state folder or IPC transport does (`crates/sol-service/src/main.rs`,
+  `host.rs`, `winsvc.rs`, `registration.rs`, `trust.rs`, `crates/sol-ipc/`).
 - `docs/safety.md`: every safety invariant and the test that guards it. Update in the same change
   that adds or changes an invariant or renames its guarding test (`crates/sol-core/src/tuner.rs`,
-  `fan.rs`, `crashguard.rs`, `crates/sol-service/tests/service.rs`).
+  `fan.rs`, `crashguard.rs`, `crates/sol-service/tests/service.rs`, and the unit tests in
+  `crates/sol-service/src/registration.rs`, `trust.rs` and `winsvc.rs`).
 - `docs/testing.md`: the test layers (hermetic, simulation, live read-only probes, hardware
   reports) and how to add coverage. Update when a test layer, a fault in `sim::Faults` or a test
   command changes.
@@ -79,7 +81,7 @@
   the id from `gh api repos/jwh3times/speed-of-light/rulesets`.
 - Crates in `AGENTS.md`'s layout and `docs/architecture.md`: the `members` of `Cargo.toml`.
 - CLI commands in `README.md` and `AGENTS.md`: the `Command` enums in `crates/sol-cli/src/main.rs`
-  and `crates/sol-service/src/main.rs`.
+  and `crates/sol-service/src/cli.rs`.
 - Guarding tests named in `docs/safety.md`: `fn <name>` under `crates/`.
 - Release zip contents in `README.md`: the `package` job in `.github/workflows/release.yml`.
 - The toolchain in `README.md` and `docs/agents/dependabot.md`: `rust-toolchain.toml`.

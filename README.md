@@ -106,8 +106,11 @@ the fans back to firmware control before anything else. It runs from a copy in
 `%ProgramFiles%\SpeedOfLight`. Its startup profile is a copy kept in `%ProgramData%\SpeedOfLight`
 (with the logs), so to change the profile, edit your file and run `install` again.
 `sol-service install` takes `--allow-unverified`, `--tick-ms`, `--stability-secs` and
-`--log-level` like `run` does. For a console session instead, use `sol-service run` from an
-elevated terminal while the service isn't running.
+`--log-level` like `run` does. Until your GPU and driver are in the compatibility matrix, a
+profile's power, clock and fan settings stay blocked unless you install with
+`--allow-unverified`, and the service log shows the profile as not fully applied. To try the service
+without touching your GPU, install with `--simulate 1`. For a console session instead, use
+`sol-service run` from an elevated terminal while the service isn't running.
 
 ### Profiles
 
