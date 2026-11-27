@@ -42,8 +42,9 @@ elevated terminal with `sol-service install --simulate 1`, so no real GPU is tou
 status`, kill the process and see Windows restart it (`sol status` answers again, and the log has
 a second `service started`), check that `sol-service run` refuses while it runs, stop and start it
 from the Services console, check the folder's owner and ACL and the log files,
-`sol-service uninstall`, then check `sol`'s "not installed" message. The steps are on the wiki's
-`human-todo` page.
+`sol-service uninstall`, then check `sol`'s "not installed" message. The steps are on the wiki
+page [Service-Acceptance-Run-2026-11-26](https://github.com/jwh3times/speed-of-light/wiki/Service-Acceptance-Run-2026-11-26);
+the first run passed every step (#35).
 
 ## Layer 3: live read-only probes (manual, on real hardware)
 
