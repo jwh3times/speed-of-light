@@ -14,10 +14,15 @@ pass. The suites and their CI jobs are in `docs/agents/open-pr.md`; the test lay
   `cargo test --locked -p "$(echo "<file>" | cut -d/ -f2)" --lib -- --exact "<name>"`. Count:
   cargo's `test result:` lines, which `mutate.mjs` reads already. Worktree: none; the first run
   builds the workspace into the worktree's own `target/`, about a minute.
-- repo root: Rust integration tests, `crates/sol-service/tests/*.rs`. One file:
-  `cargo test --locked -p sol-service --test "$(basename "<file>" .rs)"`; one test:
-  `cargo test --locked -p sol-service --test "$(basename "<file>" .rs)" -- --exact "<name>"`, the
-  name being the function's. Worktree: as above.
+- repo root: Rust unit tests in `crates/sol-cli/src/**/*.rs`. `sol-cli` builds only the `sol`
+  binary, with no library, so the command names the binary instead of `--lib`. One file:
+  `cargo test --locked -p sol-cli --bin sol -- "<module>::"` (for `main.rs`, `tests::`); one test:
+  `cargo test --locked -p sol-cli --bin sol -- --exact "<name>"`. Worktree: as above.
+- repo root: Rust integration tests, `crates/<crate>/tests/*.rs` (`sol-service`, `sol-cli`). One
+  file: `cargo test --locked -p "$(echo "<file>" | cut -d/ -f2)" --test "$(basename "<file>" .rs)"`;
+  one test: the same with `-- --exact "<name>"`, the name being the function's. `sol-cli`'s run
+  the built `sol` binary (`CARGO_BIN_EXE_sol`) against a pipe name nothing serves, never the
+  installed service's. Worktree: as above.
 - repo root: `scripts/*.test.mjs`, node's runner. One file: `node --test <file>`; one test:
   `node --test --test-name-pattern="<name>" <file>`. Worktree: none (the scripts have no
   dependencies).
