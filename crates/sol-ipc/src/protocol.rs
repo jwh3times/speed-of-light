@@ -130,6 +130,21 @@ mod tests {
     }
 
     #[test]
+    fn backend_states_print_as_their_wire_names() {
+        for state in [
+            BackendState::Ok,
+            BackendState::NotPresent,
+            BackendState::NotReady,
+            BackendState::Unavailable,
+            BackendState::Error,
+        ] {
+            let wire = serde_json::to_string(&state).unwrap();
+            assert_eq!(format!("\"{state}\""), wire);
+        }
+        assert_eq!(BackendState::NotReady.to_string(), "not_ready");
+    }
+
+    #[test]
     fn wire_format_is_stable() {
         let json = serde_json::to_string(&Request::Reset { device: None }).unwrap();
         assert_eq!(json, r#"{"type":"reset","device":null}"#);

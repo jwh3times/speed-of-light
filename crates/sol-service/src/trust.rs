@@ -71,9 +71,18 @@ impl Acl {
 /// or the folder it sits in.
 pub fn untrusted_reason(file: &Path) -> io::Result<Option<String>> {
     let parent = file.parent().filter(|p| !p.as_os_str().is_empty());
-    let mut problems = Vec::new();
+    let mut acls = Vec::new();
     for path in std::iter::once(file).chain(parent) {
-        let acl = read_acl(path)?;
+        acls.push((path, read_acl(path)?));
+    }
+    Ok(verdict(&acls))
+}
+
+/// Why the service must not trust a file, given the ACLs of the file and the folder it sits
+/// in; `None` when only administrators can change either.
+fn verdict(acls: &[(&Path, Acl)]) -> Option<String> {
+    let mut problems = Vec::new();
+    for (path, acl) in acls {
         if !acl.trusted_owner() {
             problems.push(format!("{} is owned by {}, not by an administrator", path.display(), acl.owner));
         }
@@ -86,7 +95,7 @@ pub fn untrusted_reason(file: &Path) -> io::Result<Option<String>> {
             ));
         }
     }
-    Ok((!problems.is_empty()).then(|| problems.join("; ")))
+    (!problems.is_empty()).then(|| problems.join("; "))
 }
 
 /// Give `dir` and everything in it [`STATE_DIR_SDDL`]'s ACL, replacing any explicit entries
@@ -364,6 +373,59 @@ mod tests {
         assert!(!owned_by(USERS).trusted_owner());
         assert!(owned_by("S-1-5-32-544").trusted_owner(), "Administrators");
         assert!(owned_by("S-1-5-18").trusted_owner(), "LocalSystem");
+        assert!(
+            owned_by("S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464").trusted_owner(),
+            "TrustedInstaller"
+        );
+    }
+
+    fn entry(sid: &str, mask: u32) -> Entry {
+        Entry { sid: sid.into(), allow: true, mask, inherited: false, inherit_only: false }
+    }
+
+    /// SYSTEM and Administrators full control, Users read: what `install` leaves behind.
+    fn locked_down(owner: &str) -> Acl {
+        Acl {
+            owner: owner.into(),
+            protected: true,
+            entries: vec![
+                entry("S-1-5-18", 0x1F_01FF),
+                entry("S-1-5-32-544", 0x1F_01FF),
+                entry(USERS, 0x12_00A9),
+            ],
+        }
+    }
+
+    #[test]
+    fn a_profile_only_administrators_can_change_is_trusted() {
+        let (file, folder) = (
+            Path::new(r"C:\ProgramData\SpeedOfLight\startup-profile.toml"),
+            Path::new(r"C:\ProgramData\SpeedOfLight"),
+        );
+        assert_eq!(verdict(&[(file, locked_down("S-1-5-32-544")), (folder, locked_down("S-1-5-18"))]), None);
+    }
+
+    #[test]
+    fn a_profile_owned_by_a_standard_user_is_not_trusted_even_if_its_entries_are_locked_down() {
+        let user = "S-1-5-21-1004336348-1177238915-682003330-1001";
+        let (file, folder) = (
+            Path::new(r"C:\ProgramData\SpeedOfLight\startup-profile.toml"),
+            Path::new(r"C:\ProgramData\SpeedOfLight"),
+        );
+        let why = verdict(&[(file, locked_down(user)), (folder, locked_down("S-1-5-32-544"))]).unwrap();
+        assert!(why.contains(&format!("{} is owned by {user}", file.display())), "{why}");
+        let why = verdict(&[(file, locked_down("S-1-5-32-544")), (folder, locked_down(user))]).unwrap();
+        assert!(why.contains(&format!("{} is owned by {user}", folder.display())), "{why}");
+    }
+
+    #[test]
+    fn a_writer_with_several_entries_is_named_once() {
+        let acl = Acl {
+            owner: "S-1-5-32-544".into(),
+            protected: true,
+            entries: vec![entry(USERS, 0x1F_01FF), entry(USERS, 0x12_0116), entry("S-1-5-18", 0x1F_01FF)],
+        };
+        assert_eq!(acl.non_admin_writers(), vec![USERS.to_string()]);
     }
 
     #[test]

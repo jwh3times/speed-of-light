@@ -182,6 +182,9 @@ mod tests {
             ["service", "--sim-load", "0.5"]
         );
         assert!(arguments_from_command_line("").is_empty());
+        // An executable with no arguments, and a path whose closing quote is missing.
+        assert!(arguments_from_command_line(r"C:\sol\sol-service.exe").is_empty());
+        assert!(arguments_from_command_line(r#""C:\a b\sol-service.exe service --simulate 1"#).is_empty());
     }
 
     #[test]
