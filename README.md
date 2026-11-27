@@ -132,6 +132,13 @@ points = [[40, 30], [55, 38], [65, 50], [75, 75], [83, 100]]
 `sol profile check <file>` validates a profile without applying it. Unknown keys are errors,
 so a typo can't silently do nothing.
 
+### Scripts
+
+Scripts should use `--json`, which every command takes: it carries temperatures, clocks and power
+as numbers. The text output is UTF-8. A PowerShell console on its default code page decodes
+captured text with that code page, so `88 °C` comes out as `88 ┬░C`. Set
+`[Console]::OutputEncoding = [Text.Encoding]::UTF8` before capturing it.
+
 ## Help verify your GPU
 
 Hardware reports are the most valuable contribution, and they don't need any code:
