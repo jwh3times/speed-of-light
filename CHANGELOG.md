@@ -15,6 +15,15 @@ released in 0.1.0._
 
 No unreleased changes.
 
+## [0.2.4] - 2026-11-27
+
+### Fixed
+
+- `sol status` and `sol watch` no longer end "can't reach the service" with
+  `Caused by: The system cannot find the file specified. (os error 2)`, which read like a missing
+  file. That error only means nothing is serving the pipe, which the message already explains. Any
+  other error, such as access denied or the pipe being busy, is still shown as the cause (#39)
+
 ## [0.2.3] - 2026-11-27
 
 ### Changed
