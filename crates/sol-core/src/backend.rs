@@ -40,7 +40,11 @@ pub enum BackendError {
     /// The vendor's runtime isn't installed: no such GPU, or no driver.
     #[error("{0}")]
     NotPresent(String),
-    /// The runtime is present but this backend can't use it yet.
+    /// The runtime is installed but not usable right now (the driver is still loading at
+    /// boot). Unlike the other errors, trying again later may succeed.
+    #[error("{0}")]
+    NotReady(String),
+    /// The runtime is present but this backend can't use it yet (not implemented).
     #[error("{0}")]
     Unavailable(String),
     #[error("{0}")]

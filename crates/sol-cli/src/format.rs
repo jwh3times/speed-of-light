@@ -2,11 +2,26 @@
 
 use sol_core::device::{Capabilities, DeviceInfo, Telemetry};
 use sol_core::tuner::{ApplyReport, Outcome};
-use sol_ipc::{DeviceStatus, FanModeView};
+use sol_ipc::{BackendState, BackendStatus, DeviceStatus, FanModeView};
 use std::fmt::Display;
 
 fn opt<T: Display>(v: Option<T>) -> String {
     v.map_or_else(|| "n/a".into(), |v| v.to_string())
+}
+
+/// What the service is waiting for, or why it has no GPU. `None` when there is nothing to say.
+pub fn backends_line(backends: &[BackendStatus], no_devices: bool) -> Option<String> {
+    let waiting: Vec<_> = backends.iter().filter(|b| b.status == BackendState::NotReady).collect();
+    if !waiting.is_empty() && no_devices {
+        let what: Vec<_> = waiting.iter().map(|b| format!("{} ({})", b.backend, b.detail)).collect();
+        return Some(format!("waiting for the GPU driver: {}", what.join(", ")));
+    }
+    if no_devices {
+        let what: Vec<_> =
+            backends.iter().map(|b| format!("{} {}: {}", b.backend, b.status, b.detail)).collect();
+        return Some(format!("no controllable GPU found. {}", what.join("; ")));
+    }
+    None
 }
 
 pub fn telemetry_line(name: &str, t: &Telemetry) -> String {

@@ -20,6 +20,10 @@ rules enforce `AGENTS.md` rule 5: nothing writes to the user's GPU without their
 - `^(sol-service|cargo run\b.*\s--) run\b(?!.*\s--simulate\b)` — it starts the service against real
   GPUs, with the fan loop writing duties. Use `--simulate <N>` unless the user asked for real
   hardware.
+- `^(sol-service|cargo run\b.*\s--) (install|uninstall)\b` — it registers or removes the
+  `SpeedOfLight` Windows service, which starts at boot as LocalSystem and drives real GPUs unless
+  installed with `--simulate`, and uninstalling a real install resets every GPU to stock. Ask
+  first, even with `--simulate`.
 
 ## Protected paths
 

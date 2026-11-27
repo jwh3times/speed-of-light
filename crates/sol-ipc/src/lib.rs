@@ -10,7 +10,9 @@ pub mod framing;
 pub mod pipe;
 pub mod protocol;
 
-pub use protocol::{DeviceStatus, FanModeView, PROTOCOL_VERSION, Request, Response};
+pub use protocol::{
+    BackendState, BackendStatus, DeviceStatus, FanModeView, PROTOCOL_VERSION, Request, Response,
+};
 
 /// Default pipe name. The service creates it; clients connect to it.
 pub const PIPE_NAME: &str = r"\\.\pipe\speed-of-light";

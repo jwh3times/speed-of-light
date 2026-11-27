@@ -13,17 +13,37 @@ desktop, so the strategy is layered. Each layer catches what the one below can't
 - `sol-ipc`: protocol round trips, a pinned wire format, framing (malformed and oversized
   input), and a real named-pipe round trip including the anti-squatting check.
 - `sol-nvidia`: error and throttle-reason mapping.
+- `sol-service`: the Windows service's registration (account, start type, recovery actions, and
+  the stored arguments parsing back into the same settings), which backend states are retried,
+  the rule behind `run`'s refusal while the installed service owns the GPUs, and the
+  startup-profile trust check
+  against real ACLs on temporary files.
 
 ## Layer 2: closed-loop simulation (hermetic, every PR)
 
 `crates/sol-service/tests/service.rs` runs the real `Service` against `SimulatedGpu`. That
 covers the thermal model, firmware auto-fan, the power cap and fault injection (ignored writes,
-permission errors, dead sensors, failing fan writes, lost device). Simulated time advances in
+permission errors, dead sensors, failing fan writes, lost device), a driver that is still
+loading when the service starts, a tuning tool that starts later, and uninstall's return to
+stock. Simulated time advances in
 1 s steps, so a 10-minute load test runs in milliseconds. These tests assert outcomes ("the
 GPU never reaches slowdown"), not implementation details.
 
 To add a fault, add a flag to `sim::Faults`, implement it in `SimulatedGpu`, and write a
 service test that asserts the safe outcome.
+
+### Service acceptance run (manual, elevated, simulated GPUs)
+
+Some of the Windows service can't run in the hermetic suite: the Service Control Manager's stop
+and shutdown requests reaching the graceful stop, the restart after the process is killed, the
+owner change on the state folder (it needs elevation), the log files, `run`'s refusal while the
+service runs, and `sol`'s "not installed / stopped" message. Those are checked by hand from an
+elevated terminal with `sol-service install --simulate 1`, so no real GPU is touched: `sol
+status`, kill the process and see Windows restart it (`sol status` answers again, and the log has
+a second `service started`), check that `sol-service run` refuses while it runs, stop and start it
+from the Services console, check the folder's owner and ACL and the log files,
+`sol-service uninstall`, then check `sol`'s "not installed" message. The steps are on the wiki's
+`human-todo` page.
 
 ## Layer 3: live read-only probes (manual, on real hardware)
 

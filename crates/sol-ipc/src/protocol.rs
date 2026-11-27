@@ -5,7 +5,43 @@ use sol_core::profile::{FanSetting, Profile};
 use sol_core::tuner::ApplyReport;
 use sol_core::units::Percent;
 
-pub const PROTOCOL_VERSION: u32 = 1;
+/// 2: `status` carries `backends`, so a client can tell "waiting for the driver" from "no GPU".
+pub const PROTOCOL_VERSION: u32 = 2;
+
+/// What opening one vendor backend found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendState {
+    Ok,
+    /// The vendor's runtime isn't installed.
+    NotPresent,
+    /// The runtime is installed but not usable yet (the driver is still loading). Retried.
+    NotReady,
+    /// The runtime is installed but this backend can't use it (not implemented).
+    Unavailable,
+    Error,
+}
+
+impl std::fmt::Display for BackendState {
+    /// The wire name, e.g. `not_ready`.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            BackendState::Ok => "ok",
+            BackendState::NotPresent => "not_present",
+            BackendState::NotReady => "not_ready",
+            BackendState::Unavailable => "unavailable",
+            BackendState::Error => "error",
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackendStatus {
+    pub backend: String,
+    pub status: BackendState,
+    pub detail: String,
+    pub devices: usize,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -37,7 +73,7 @@ pub enum Request {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Response {
     Hello { protocol: u32, service_version: String },
-    Status { devices: Vec<DeviceStatus>, guard: Option<Sentinel> },
+    Status { devices: Vec<DeviceStatus>, guard: Option<Sentinel>, backends: Vec<BackendStatus> },
     Applied { reports: Vec<ApplyReport> },
     Guard { tripped: Option<Sentinel> },
     Ok { message: String },
@@ -94,11 +130,42 @@ mod tests {
     }
 
     #[test]
+    fn backend_states_print_as_their_wire_names() {
+        for state in [
+            BackendState::Ok,
+            BackendState::NotPresent,
+            BackendState::NotReady,
+            BackendState::Unavailable,
+            BackendState::Error,
+        ] {
+            let wire = serde_json::to_string(&state).unwrap();
+            assert_eq!(format!("\"{state}\""), wire);
+        }
+        assert_eq!(BackendState::NotReady.to_string(), "not_ready");
+    }
+
+    #[test]
     fn wire_format_is_stable() {
         let json = serde_json::to_string(&Request::Reset { device: None }).unwrap();
         assert_eq!(json, r#"{"type":"reset","device":null}"#);
         let r: Request =
             serde_json::from_str(r#"{"type":"apply_profile","profile":{"schema":1,"name":"x"}}"#).unwrap();
         assert!(matches!(r, Request::ApplyProfile { allow_unverified: false, .. }));
+
+        assert_eq!(PROTOCOL_VERSION, 2, "protocol 2 added backend statuses to `status`");
+        let status = Response::Status {
+            devices: Vec::new(),
+            guard: None,
+            backends: vec![BackendStatus {
+                backend: "nvidia-nvml".into(),
+                status: BackendState::NotReady,
+                detail: "NVIDIA driver is not loaded".into(),
+                devices: 0,
+            }],
+        };
+        assert_eq!(
+            serde_json::to_string(&status).unwrap(),
+            r#"{"type":"status","devices":[],"guard":null,"backends":[{"backend":"nvidia-nvml","status":"not_ready","detail":"NVIDIA driver is not loaded","devices":0}]}"#
+        );
     }
 }

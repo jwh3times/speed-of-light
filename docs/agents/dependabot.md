@@ -7,9 +7,11 @@ and in the scheduled review. These facts apply to this repository only.
 
 - **The Rust workspace** (`Cargo.toml`, `Cargo.lock`, `crates/*`): a Windows GPU tuning tool.
   `nvml-wrapper` binds NVIDIA's NVML (`sol-nvidia`); `windows-sys` covers the named pipe, its DACL
-  (`sol-ipc`) and the process scan (`sol-service`); `tokio` runs the service and its pipe; `clap`
-  parses the CLI; `serde`, `serde_json` and `toml` carry the IPC wire format, the profiles and the
-  compiled-in compat matrix; `thiserror` and `anyhow` the errors; `tracing` the logs; `proptest`
+  (`sol-ipc`), and the process scan, the state folder's ACL and the elevation check
+  (`sol-service`); `windows-service` registers and runs the Windows service; `tokio` runs the
+  service and its pipe; `clap` parses the CLI; `serde`, `serde_json` and `toml` carry the IPC wire
+  format, the profiles and the compiled-in compat matrix; `thiserror` and `anyhow` the errors;
+  `tracing` the logs, and `tracing-appender` the installed service's log files; `proptest`
   and `tempfile` are test-only. `nvml-wrapper-sys` and `libloading` are declared in
   `[workspace.dependencies]` for the backends to come, but no crate uses them yet, so their bumps
   only move `Cargo.toml`.
@@ -52,11 +54,13 @@ and in the scheduled review. These facts apply to this repository only.
 
 - `Cargo.toml`'s `[workspace.dependencies]` (versions and enabled features, the `windows-sys`
   feature list above all) and `[workspace.lints]`.
-- `crates/sol-nvidia/src/lib.rs` (nvml-wrapper), `crates/sol-ipc/src/pipe.rs` and
-  `crates/sol-service/src/conflicts.rs` (windows-sys), `crates/sol-ipc/src/protocol.rs` (serde, the
-  pinned wire format), `crates/sol-core/src/profile.rs` and `compat.rs` (toml),
-  `crates/sol-cli/src/main.rs` and
-  `crates/sol-service/src/main.rs` (clap, tokio).
+- `crates/sol-nvidia/src/lib.rs` (nvml-wrapper), `crates/sol-ipc/src/pipe.rs`,
+  `crates/sol-service/src/conflicts.rs`, `trust.rs` and `winsvc.rs` (windows-sys),
+  `crates/sol-service/src/winsvc.rs` (windows-service, tracing-appender),
+  `crates/sol-ipc/src/protocol.rs` (serde, the pinned wire format),
+  `crates/sol-core/src/profile.rs` and `compat.rs` (toml), `crates/sol-cli/src/main.rs` and
+  `crates/sol-service/src/cli.rs` (clap), `crates/sol-cli/src/main.rs` and
+  `crates/sol-service/src/main.rs` and `host.rs` (tokio).
 - `clippy.toml` and `rustfmt.toml`, for a toolchain-adjacent change.
 - The `with:` inputs in `ci.yml` and `release.yml`.
 
