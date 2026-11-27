@@ -1,5 +1,12 @@
 # Roadmap
 
+## Done (0.2.0, pre-alpha)
+
+- Runs as a real Windows service (`sol-service install` / `uninstall`): LocalSystem, starts at
+  boot, restarted within seconds if it dies, and trusting only administrator-owned files
+  ([ADR 0002](docs/adr/0002-service-trusts-only-admin-owned-state.md)). Waits for the GPU driver
+  at boot, and reports tuning tools that start later (#16).
+
 ## Done (0.1.0, pre-alpha)
 
 - Vendor-neutral core: units, capabilities, telemetry, profiles (TOML, strict).
@@ -21,8 +28,6 @@
       Control closed). Commit the first `verified` write entries.
 - [ ] Recruit testers for Turing, Ada, Blackwell and laptops. Hardware-report issue template.
 - [ ] Record/replay device for turning user bug reports into CI regression tests.
-- [x] Run as a real Windows service (`windows-service` crate) with automatic restart.
-      Install/uninstall commands.
 - [ ] Config file (`%ProgramData%\SpeedOfLight\config.toml`) for policy, startup profile and
       tick rate.
 - [ ] Client-side verification of the pipe server's identity (`GetNamedPipeServerProcessId`

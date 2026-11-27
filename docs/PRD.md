@@ -122,7 +122,7 @@ Priority: **P0** must ship for 1.0, **P1** should, **P2** later. Status reflects
 | SAF-1 | Every write is range-checked, matrix-gated, then read back; outcomes are Applied / NotEnforced / Rejected / Blocked / Failed | P0 | Done |
 | SAF-2 | Crash guard: a profile that didn't survive its stability window is not re-applied at boot | P0 | Done |
 | SAF-3 | Warn when other tuning tools are running (and refuse self-test) | P0 | Done |
-| SAF-4 | Run as a Windows service with automatic restart, so a killed process doesn't strand fans | P0 | Planned (M1) |
+| SAF-4 | Run as a Windows service with automatic restart, so a killed process doesn't strand fans | P0 | Done |
 | SAF-5 | Each safety invariant has a test that fails without it | P0 | Done; [safety.md](safety.md) is the index |
 
 ### 7.5 Compatibility matrix
@@ -142,7 +142,7 @@ Priority: **P0** must ship for 1.0, **P1** should, **P2** later. Status reflects
 | --- | --- | --- | --- |
 | PRO-1 | Human-editable TOML profiles, strictly parsed, schema-versioned | P0 | Done |
 | PRO-2 | Device targeting by ID or name | P0 | Done |
-| PRO-3 | Startup profile | P0 | Done (CLI flag); config file planned |
+| PRO-3 | Startup profile | P0 | Done (`--startup-profile` on `run` and `install`; the installed service applies an administrator-owned copy); config file planned (#17) |
 | PRO-4 | Hotkeys and per-application profiles (switch on game launch) | P1 | Planned |
 | PRO-5 | Import Afterburner profiles where they map cleanly | P2 | Planned |
 

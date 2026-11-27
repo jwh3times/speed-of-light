@@ -15,6 +15,22 @@ released in 0.1.0._
 
 No unreleased changes.
 
+## [0.2.2] - 2026-11-27
+
+### Changed
+
+- `ROADMAP.md` lists the Windows service under "Done (0.2.0)", and `docs/testing.md` links the
+  acceptance run's own wiki page.
+
+## [0.2.1] - 2026-11-27
+
+### Changed
+
+- `SECURITY.md`'s threat model now covers the installed service: it runs only from an
+  administrator-only copy, trusts only its administrator-owned state folder, and accepts pipe
+  requests from boot for whoever is signed in. The PRD marks SAF-4 (run as a Windows service) done
+  (#36)
+
 ## [0.2.0] - 2026-11-26
 
 ### Added
