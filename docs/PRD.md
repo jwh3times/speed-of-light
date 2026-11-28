@@ -99,7 +99,7 @@ Priority: **P0** must ship for 1.0, **P1** should, **P2** later. Status reflects
 | TUN-1 | Power limit as a percentage of stock or as watts, within driver range | P0 | Implemented; awaiting hardware verification |
 | TUN-2 | Core and memory clock offsets within driver range | P0 | Implemented; awaiting hardware verification |
 | TUN-3 | Reset to stock that always works, even when tuning is known broken | P0 | Done |
-| TUN-4 | User policy caps (max power %, max offsets) inside driver range | P1 | Done (core), config file planned |
+| TUN-4 | User policy caps (max power %, max offsets) inside driver range | P1 | Done (the service config's `max_power_percent`, `max_core_offset_mhz` and `max_memory_offset_mhz`; they bind the startup profile and every request) |
 | TUN-5 | V/F curve editor (NVIDIA via NVAPI, AMD/Intel via their SDKs): opt-in, matrix-gated, verified | P1 | Planned (M3) |
 | TUN-6 | Undervolt assistant: guided search with a stress load and error detection, producing a stability report | P1 | Planned (M3) |
 
@@ -142,7 +142,7 @@ Priority: **P0** must ship for 1.0, **P1** should, **P2** later. Status reflects
 | --- | --- | --- | --- |
 | PRO-1 | Human-editable TOML profiles, strictly parsed, schema-versioned | P0 | Done |
 | PRO-2 | Device targeting by ID or name | P0 | Done |
-| PRO-3 | Startup profile | P0 | Done (`--startup-profile` on `run` and `install`; the installed service applies an administrator-owned copy); config file planned (#17) |
+| PRO-3 | Startup profile | P0 | Done (`--startup-profile` on `run` and `install`; the installed service applies an administrator-owned copy) |
 | PRO-4 | Hotkeys and per-application profiles (switch on game launch) | P1 | Planned |
 | PRO-5 | Import Afterburner profiles where they map cleanly | P2 | Planned |
 
