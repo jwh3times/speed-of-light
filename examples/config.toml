@@ -1,0 +1,46 @@
+# Speed of Light service config.
+#
+# The installed service reads its settings from this file. Copy it, uncomment what you want to
+# change, and install with it from an elevated terminal:
+#
+#   sol-service install --config config.toml
+#
+# Install checks the file and copies it to %ProgramData%\SpeedOfLight\config.toml, where only
+# administrators can change it. Editing your copy later changes nothing: run install again.
+# The service reads it once, at start. If the installed copy turns out to be unusable (edited
+# by hand into something invalid, or changeable by a standard user), the service still runs and
+# monitors, but refuses every write except a return to stock until it is fixed.
+#
+# For a console session, `sol-service run --config config.toml` reads it in place, and any
+# setting flag you add wins over the file.
+#
+# Unknown keys and out-of-range values are errors. Every key below is optional.
+
+schema = 1
+
+# --- Policy caps: your own limits, inside whatever the driver allows. ---
+# They bind every write, from every client and the startup profile. A setting over a cap is
+# refused, not lowered to the cap. No cap by default.
+
+# Highest power limit, as a percentage of the card's default limit. Above 0.
+# max_power_percent = 100
+
+# Largest clock offsets either way, in MHz. 0 or more.
+# max_core_offset_mhz = 150
+# max_memory_offset_mhz = 1000
+
+# Allow writes on driver and GPU combinations nobody has verified yet, for every client.
+# When false, a client can still opt in for one request (`--allow-unverified`).
+# allow_unverified = false
+
+# --- The service. ---
+
+# Control-loop period, in milliseconds: 250 to 5000.
+# tick_ms = 1000
+
+# Seconds an applied power or clock profile must run before the crash guard counts it as
+# having survived: 30 to 3600.
+# stability_secs = 120
+
+# error, warn, info, debug or trace.
+# log_level = "info"

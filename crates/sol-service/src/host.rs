@@ -2,12 +2,12 @@
 //! console (`sol-service run`) and the Windows service share it, and differ only in how they
 //! are asked to stop.
 
-use crate::cli::Settings;
-use crate::{Service, ServiceConfig, StartupProfile, backends, conflicts};
+use crate::cli::Simulation;
+use crate::config::{self, ServiceConfig};
+use crate::{Service, ServiceOptions, StartupProfile, backends, conflicts};
 use anyhow::{Context, Result};
 use sol_core::compat::CompatMatrix;
 use sol_core::profile::Profile;
-use sol_core::tuner::SafetyPolicy;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -16,10 +16,20 @@ use tokio::sync::watch;
 
 #[derive(Debug, Clone)]
 pub struct HostConfig {
-    pub settings: Settings,
+    pub sim: Simulation,
+    /// The settings the service runs with: the service config's, or the defaults.
+    pub config: ServiceConfig,
+    /// Why the service config was rejected; the service then blocks writes (ADR 0003).
+    pub config_rejected: Option<String>,
     pub state_dir: PathBuf,
     pub pipe: String,
     pub startup_profile: Option<StartupProfile>,
+}
+
+/// Load the installed service's config: a file a non-administrator could have changed is
+/// rejected without being read.
+pub fn load_service_config(path: &Path) -> config::Loaded {
+    config::load_installed(path, |p| crate::trust::untrusted_reason(p).map_err(|e| e.to_string()))
 }
 
 /// `%ProgramData%\SpeedOfLight`.
@@ -56,15 +66,12 @@ pub fn load_startup_profile(path: &Path, require_admin_owned: bool) -> StartupPr
 
 /// Serve until `stop` completes (or the pipe fails), then stop gracefully.
 pub async fn run(cfg: HostConfig, stop: impl Future<Output = ()>) -> Result<()> {
-    let Settings { simulate, sim_load, tick_ms, stability_secs, allow_unverified, .. } = cfg.settings;
-    let service_cfg = ServiceConfig {
-        state_dir: cfg.state_dir,
-        policy: SafetyPolicy { allow_unverified, ..SafetyPolicy::default() },
-        startup_profile: cfg.startup_profile,
-        stability_window: Duration::from_secs(stability_secs),
-    };
+    let Simulation { simulate, sim_load } = cfg.sim;
+    let tick_ms = cfg.config.tick_ms;
+    let opts =
+        ServiceOptions::from_config(cfg.state_dir, &cfg.config, cfg.startup_profile, cfg.config_rejected);
     let mut service =
-        Service::new(move || backends::open_all(simulate, sim_load), service_cfg, CompatMatrix::builtin());
+        Service::new(move || backends::open_all(simulate, sim_load), opts, CompatMatrix::builtin());
     if simulate.is_none() {
         // Simulated GPUs can't conflict with real tools.
         service = service.with_conflict_detector(conflicts::detect);

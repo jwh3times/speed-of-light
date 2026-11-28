@@ -28,7 +28,8 @@
 
 1. Client sends `ApplyProfile { profile, allow_unverified }`.
 2. `tuner::plan` resolves the profile against the device's `Capabilities` and the user's
-   `SafetyPolicy`. Out-of-range items are `Rejected`. It's pure, so nothing is written.
+   `SafetyPolicy` (the service config's policy caps). Out-of-range items are `Rejected`. It's
+   pure, so nothing is written.
 3. `Service::apply` arms the crash guard if power or clocks are involved.
 4. `tuner::execute` checks each action against the compat matrix (`Blocked` if it fails),
    writes it, and reads it back (`Applied`, `NotEnforced`, or `Failed`).
@@ -52,13 +53,21 @@ without linking Rust code, and third-party integrations get a stable, documented
 ## State
 
 `%ProgramData%\SpeedOfLight\` holds `crash-guard.json`, the logs (`logs\`, daily files, seven
-kept) and, when one is installed, `startup-profile.toml`.
+kept) and, when they are installed, `config.toml` (the service config) and
+`startup-profile.toml`.
 
 - `install` sets the folder's owner to Administrators and gives it a protected ACL:
   SYSTEM and Administrators full control, Users read. `C:\ProgramData` lets any user create
   folders, so this is done even when the folder already exists.
-- The startup profile is a copy `install` takes. Editing the original changes nothing until
-  `install` runs again, and the service won't apply a copy a non-administrator could change.
-- In a console, `run --startup-profile <file>` reads the named file directly.
-- Until the config file (#17) exists, the installed service's other settings live in its
-  command line.
+- The service config and the startup profile are copies `install` takes (`--config`,
+  `--startup-profile`), checked first so a bad file changes nothing. Editing an original changes
+  nothing until `install` runs again. The service won't apply a startup profile a
+  non-administrator could change.
+- The service reads its config once, at start. A missing one means the defaults, with no policy
+  caps. One that is untrusted, unreadable or invalid doesn't stop the service: it runs and
+  monitors, but refuses every write except a return to stock, and each GPU's notices say why
+  (ADR 0003).
+- The installed service's command line holds only `service` and, for a test install, the
+  simulate flags.
+- In a console, `run --config <file>` and `run --startup-profile <file>` read the named files
+  directly, and `run`'s setting flags win over the config.

@@ -58,6 +58,7 @@ Once a PR is open, read [docs/agents/merging.md](docs/agents/merging.md).
 - `crates/sol-service`: `Service` (sync, transport-free, tested in `tests/service.rs`) plus
   `host` (tokio, pipe), shared by `run` in a console and the Windows service in `winsvc`
   (`install` / `uninstall` and what the SCM starts). Also `cli` (the `sol-service` command line),
+  `config` (the service config: parsing it and loading the installed copy),
   `registration` (the service's registration as data), `trust` (the state folder's ACL),
   `backends` (open all vendors) and `conflicts`.
 - `crates/sol-cli`: `sol`. Service-backed commands plus direct `probe` / `doctor` / `selftest`.

@@ -13,7 +13,7 @@ the device's vendor, driver version and architecture:
 | --- | --- |
 | Any `broken` entry | Blocked, always. The entry's note is shown. |
 | A `verified` entry and no broken one | Allowed. |
-| Nothing | Unverified: blocked unless `--allow-unverified` (or the service's `--allow-unverified`). |
+| Nothing | Unverified: blocked unless `--allow-unverified` (or the service config's `allow_unverified = true`). |
 
 Resetting to stock is never gated.
 

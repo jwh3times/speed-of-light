@@ -10,7 +10,8 @@ use sol_core::tuner::{Outcome, SafetyPolicy};
 use sol_core::units::{MhzOffset, Percent};
 use sol_ipc::{BackendState, BackendStatus, FanModeView, PROTOCOL_VERSION, Request, Response};
 use sol_service::backends::Opened;
-use sol_service::{DeviceSource, Service, ServiceConfig, StartupProfile};
+use sol_service::config::ServiceConfig;
+use sol_service::{DeviceSource, Service, ServiceOptions, StartupProfile};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -18,17 +19,18 @@ use std::time::Duration;
 
 const SEC: Duration = Duration::from_secs(1);
 
-fn config(dir: &Path) -> ServiceConfig {
-    ServiceConfig {
+fn options(dir: &Path) -> ServiceOptions {
+    ServiceOptions {
         state_dir: dir.to_path_buf(),
         policy: SafetyPolicy { allow_unverified: true, ..SafetyPolicy::default() },
         startup_profile: None,
         stability_window: Duration::from_secs(3600),
+        config_rejected: None,
     }
 }
 
 fn service(dir: &Path, gpu: &SimulatedGpu) -> Service {
-    Service::with_devices(vec![Box::new(gpu.clone())], config(dir), CompatMatrix::default())
+    Service::with_devices(vec![Box::new(gpu.clone())], options(dir), CompatMatrix::default())
 }
 
 fn profile(body: &str) -> Profile {
@@ -198,7 +200,7 @@ fn crash_guard_blocks_the_startup_profile_after_a_crash() {
     // First boot: the startup profile applies by itself, then the PC "crashes" (the service
     // is dropped without a graceful stop, inside the stability window).
     {
-        let mut cfg = config(dir.path());
+        let mut cfg = options(dir.path());
         cfg.startup_profile = Some(StartupProfile::Trusted(oc.clone()));
         let _svc = Service::with_devices(vec![Box::new(gpu.clone())], cfg, CompatMatrix::default());
         assert_eq!(gpu.tuning_state().unwrap().core_offset, Some(MhzOffset(150)));
@@ -206,7 +208,7 @@ fn crash_guard_blocks_the_startup_profile_after_a_crash() {
 
     // The reboot resets the card; the driver doesn't keep offsets.
     let gpu = SimulatedGpu::new(SimConfig::default());
-    let mut cfg = config(dir.path());
+    let mut cfg = options(dir.path());
     cfg.startup_profile = Some(StartupProfile::Trusted(oc));
     let mut svc = Service::with_devices(vec![Box::new(gpu.clone())], cfg, CompatMatrix::default());
     assert_eq!(svc.tripped().map(|s| s.profile.as_str()), Some("oc"));
@@ -224,7 +226,7 @@ fn crash_guard_blocks_the_startup_profile_after_a_crash() {
 fn guard_disarms_once_the_stability_window_passes() {
     let dir = tempfile::tempdir().unwrap();
     let gpu = SimulatedGpu::new(SimConfig::default());
-    let mut cfg = config(dir.path());
+    let mut cfg = options(dir.path());
     cfg.stability_window = Duration::ZERO;
     let mut svc = Service::with_devices(vec![Box::new(gpu.clone())], cfg, CompatMatrix::default());
     apply(&mut svc, profile("[power]\npercent = 95\n"));
@@ -237,7 +239,7 @@ fn guard_disarms_once_the_stability_window_passes() {
 fn unverified_writes_are_blocked_unless_the_request_opts_in() {
     let dir = tempfile::tempdir().unwrap();
     let gpu = SimulatedGpu::new(SimConfig::default());
-    let mut cfg = config(dir.path());
+    let mut cfg = options(dir.path());
     cfg.policy.allow_unverified = false;
     let mut svc = Service::with_devices(vec![Box::new(gpu.clone())], cfg, CompatMatrix::default());
 
@@ -273,7 +275,7 @@ fn set_fan_request_and_profile_targeting() {
     let b = SimulatedGpu::with_id(SimConfig { name: "Beta".into(), ..SimConfig::default() }, "sim:b");
     let mut svc = Service::with_devices(
         vec![Box::new(a.clone()), Box::new(b.clone())],
-        config(dir.path()),
+        options(dir.path()),
         CompatMatrix::default(),
     );
 
@@ -304,7 +306,7 @@ fn the_startup_profile_waits_for_a_gpu_that_is_not_ready_yet() {
     // A previous instance died holding the fans.
     gpu.clone().set_fan_duty(Percent::new(40.0).unwrap()).unwrap();
     let (source, polled) = slow_driver(2, &gpu);
-    let mut cfg = config(dir.path());
+    let mut cfg = options(dir.path());
     cfg.startup_profile = Some(StartupProfile::Trusted(profile("[clocks]\ncore_offset_mhz = 100\n")));
     let mut svc = Service::new(source, cfg, CompatMatrix::default());
 
@@ -346,7 +348,7 @@ fn the_retry_wait_doubles_up_to_thirty_seconds() {
     let dir = tempfile::tempdir().unwrap();
     let gpu = SimulatedGpu::new(SimConfig::default());
     let (source, polled) = slow_driver(usize::MAX, &gpu);
-    let mut svc = Service::new(source, config(dir.path()), CompatMatrix::default());
+    let mut svc = Service::new(source, options(dir.path()), CompatMatrix::default());
     // Waits of 2, 4, 8, 16, 30, 30 s: polls land at 2, 6, 14, 30, 60 and 90 s after start.
     let mut seen = Vec::new();
     for second in 1..=90 {
@@ -362,7 +364,7 @@ fn the_retry_wait_doubles_up_to_thirty_seconds() {
 fn a_rejected_startup_profile_is_not_applied_and_a_notice_says_why() {
     let dir = tempfile::tempdir().unwrap();
     let gpu = SimulatedGpu::new(SimConfig::default());
-    let mut cfg = config(dir.path());
+    let mut cfg = options(dir.path());
     cfg.startup_profile =
         Some(StartupProfile::Rejected("non-administrators can change it (BUILTIN\\Users)".into()));
     let mut svc = Service::with_devices(vec![Box::new(gpu.clone())], cfg, CompatMatrix::default());
@@ -390,7 +392,7 @@ fn a_tuning_tool_started_after_the_service_gets_a_notice_and_fan_writes_continue
     let seen = Arc::clone(&running);
     let mut svc = Service::with_devices(
         vec![Box::new(a.clone()), Box::new(b.clone())],
-        config(dir.path()),
+        options(dir.path()),
         CompatMatrix::default(),
     )
     .with_conflict_detector(move || seen.lock().unwrap().clone());
@@ -477,7 +479,7 @@ fn a_tuning_tool_seen_before_the_gpu_is_ready_is_reported_on_the_gpu_found_later
     let gpu = SimulatedGpu::new(SimConfig::default());
     let (source, _) = slow_driver(5, &gpu);
     let mut svc =
-        Service::new(source, config(dir.path()), CompatMatrix::default()).with_conflict_detector(|| {
+        Service::new(source, options(dir.path()), CompatMatrix::default()).with_conflict_detector(|| {
             vec![Conflict { tool: "Fan Control", process: "FanControl.exe".into(), role: Role::FanControl }]
         });
     // At boot: the tool is already running, the driver isn't ready yet.
@@ -504,7 +506,7 @@ fn an_unexpected_backend_error_is_retried_too() {
         counter.fetch_add(1, Ordering::SeqCst);
         Opened { devices: Vec::new(), statuses: vec![backend(BackendState::Error)] }
     };
-    let mut svc = Service::new(source, config(dir.path()), CompatMatrix::default());
+    let mut svc = Service::new(source, options(dir.path()), CompatMatrix::default());
     for _ in 0..10 {
         svc.tick(SEC);
     }
@@ -520,7 +522,7 @@ fn a_missing_runtime_is_not_retried() {
         counter.fetch_add(1, Ordering::SeqCst);
         Opened { devices: Vec::new(), statuses: vec![backend(BackendState::NotPresent)] }
     };
-    let mut svc = Service::new(source, config(dir.path()), CompatMatrix::default());
+    let mut svc = Service::new(source, options(dir.path()), CompatMatrix::default());
     for _ in 0..120 {
         svc.tick(SEC);
     }
@@ -528,4 +530,146 @@ fn a_missing_runtime_is_not_retried() {
     let (devices, backends) = status(&mut svc);
     assert!(devices.is_empty());
     assert_eq!(backends[0].status, BackendState::NotPresent);
+}
+
+fn outcomes(reports: &[sol_core::tuner::ApplyReport]) -> Vec<String> {
+    reports[0]
+        .items
+        .iter()
+        .map(|i| {
+            let kind = match &i.outcome {
+                Outcome::Applied => "applied",
+                Outcome::Rejected { .. } => "rejected",
+                Outcome::Blocked { .. } => "blocked",
+                _ => "other",
+            };
+            format!("{:?}: {kind}", i.feature)
+        })
+        .collect()
+}
+
+#[test]
+fn policy_caps_bind_the_startup_profile_and_every_request() {
+    // The caps come from a service config file, the way the host builds the service.
+    let from_file = |toml: &str, dir: &Path, startup: Option<StartupProfile>| {
+        let config = ServiceConfig::from_toml(toml).unwrap();
+        ServiceOptions::from_config(dir.to_path_buf(), &config, startup, None)
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let gpu = SimulatedGpu::new(SimConfig::default());
+    let startup =
+        profile("[power]\npercent = 105\n[clocks]\ncore_offset_mhz = 150\nmemory_offset_mhz = 300\n");
+    let opts = from_file(
+        "schema = 1\nallow_unverified = true\nmax_power_percent = 100\nmax_core_offset_mhz = 100\n",
+        dir.path(),
+        Some(StartupProfile::Trusted(startup)),
+    );
+    let mut svc = Service::with_devices(vec![Box::new(gpu.clone())], opts, CompatMatrix::default());
+
+    // The startup profile's items over a cap are refused, not lowered to it; the rest applies.
+    let stock_power = sol_core::units::Milliwatts::from_watts(SimConfig::default().default_power_w);
+    let state = gpu.tuning_state().unwrap();
+    assert_eq!(state.power_limit, Some(stock_power));
+    assert_eq!(state.core_offset, Some(MhzOffset(0)));
+    assert_eq!(state.memory_offset, Some(MhzOffset(300)));
+    let reports = svc.startup().unwrap();
+    assert_eq!(
+        outcomes(&reports),
+        ["PowerLimit: rejected", "ClockOffset: rejected", "ClockOffset: applied"],
+        "{reports:#?}"
+    );
+
+    // With unverified writes off service-wide, a client's own opt-in still works, but it
+    // can't loosen a cap.
+    let dir = tempfile::tempdir().unwrap();
+    let gpu = SimulatedGpu::new(SimConfig::default());
+    let opts = from_file("schema = 1\nmax_core_offset_mhz = 100\n", dir.path(), None);
+    let mut svc = Service::with_devices(vec![Box::new(gpu.clone())], opts, CompatMatrix::default());
+    let mut ask = |mhz: i32, allow_unverified: bool| {
+        let body = format!("[clocks]\ncore_offset_mhz = {mhz}\n");
+        match svc.handle(Request::ApplyProfile { profile: profile(&body), allow_unverified }) {
+            Response::Applied { reports } => outcomes(&reports),
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_eq!(ask(-150, true), ["ClockOffset: rejected"]);
+    assert_eq!(gpu.tuning_state().unwrap().core_offset, Some(MhzOffset(0)));
+    assert_eq!(ask(100, true), ["ClockOffset: applied"]);
+    assert_eq!(gpu.tuning_state().unwrap().core_offset, Some(MhzOffset(100)));
+    // And without the opt-in, the unverified driver blocks even a write inside the caps.
+    assert_eq!(ask(50, false), ["ClockOffset: blocked"]);
+}
+
+#[test]
+fn a_rejected_service_config_blocks_every_write_except_a_return_to_stock() {
+    let dir = tempfile::tempdir().unwrap();
+    let a = SimulatedGpu::with_id(SimConfig::default(), "sim:a");
+    let b = SimulatedGpu::with_id(SimConfig::default(), "sim:b");
+    let mut cfg = options(dir.path());
+    cfg.config_rejected = Some("config.toml: tick_ms = 1 must be in 250..=5000".into());
+    cfg.startup_profile = Some(StartupProfile::Trusted(profile("[clocks]\ncore_offset_mhz = 100\n")));
+    // A tuning tool that keeps starting and stopping, so later notices pile up.
+    let checks = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&checks);
+    let flapping = move || {
+        let n = counted.fetch_add(1, Ordering::SeqCst);
+        let afterburner = sol_service::conflicts::Conflict {
+            tool: "MSI Afterburner",
+            process: "MSIAfterburner.exe".into(),
+            role: sol_service::conflicts::Role::Tuning,
+        };
+        if n % 2 == 0 { vec![afterburner] } else { Vec::new() }
+    };
+    let mut svc =
+        Service::with_devices(vec![Box::new(a.clone()), Box::new(b.clone())], cfg, CompatMatrix::default())
+            .with_conflict_detector(flapping);
+
+    // The startup profile is skipped, and every GPU says why first, however many notices come later.
+    assert_eq!(a.tuning_state().unwrap().core_offset, Some(MhzOffset(0)));
+    for _ in 0..30 {
+        svc.tick(sol_service::CONFLICT_RECHECK);
+    }
+    assert!(checks.load(Ordering::SeqCst) >= 30);
+    let (devices, _) = status(&mut svc);
+    for d in &devices {
+        assert!(d.notices.first().is_some_and(|n| n.contains("tick_ms = 1")), "{:?}", d.notices);
+    }
+    assert!(svc.startup().unwrap_err().contains("tick_ms = 1"));
+
+    // Every write that would tune is refused with the reason, opt-in or not.
+    let curve = profile(CURVE).fan.unwrap();
+    for request in [
+        Request::ApplyProfile {
+            profile: profile("[clocks]\ncore_offset_mhz = 50\n"),
+            allow_unverified: true,
+        },
+        Request::ApplyProfile { profile: profile("[power]\npercent = 90\n"), allow_unverified: false },
+        Request::SetFan {
+            device: None,
+            setting: FanSetting::Fixed { duty: Percent::clamped(60.0) },
+            allow_unverified: true,
+        },
+        Request::SetFan { device: None, setting: curve, allow_unverified: false },
+    ] {
+        match svc.handle(request.clone()) {
+            Response::Error { message } => assert!(message.contains("tick_ms = 1"), "{message}"),
+            other => panic!("{request:?} -> {other:?}"),
+        }
+    }
+    assert!(a.fans_on_firmware() && b.fans_on_firmware());
+    assert_eq!(a.tuning_state().unwrap().core_offset, Some(MhzOffset(0)));
+
+    // A return to stock still works: settings an earlier run left behind can be undone.
+    a.clone().set_clock_offset(sol_core::device::ClockDomain::Core, MhzOffset(120)).unwrap();
+    a.clone().set_fan_duty(Percent::clamped(70.0)).unwrap();
+    let Response::Applied { reports } =
+        svc.handle(Request::SetFan { device: None, setting: FanSetting::Auto, allow_unverified: false })
+    else {
+        panic!()
+    };
+    assert!(reports.iter().all(|r| r.all_applied()), "{reports:#?}");
+    assert!(a.fans_on_firmware());
+    let Response::Applied { reports } = svc.handle(Request::Reset { device: None }) else { panic!() };
+    assert!(reports.iter().all(|r| r.all_applied()), "{reports:#?}");
+    assert_eq!(a.tuning_state().unwrap().core_offset, Some(MhzOffset(0)));
 }

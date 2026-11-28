@@ -694,14 +694,14 @@ dependencies = [
 
 [[package]]
 name = "sol-amd"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "sol-core",
 ]
 
 [[package]]
 name = "sol-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -715,7 +715,7 @@ dependencies = [
 
 [[package]]
 name = "sol-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "proptest",
  "serde",
@@ -728,14 +728,14 @@ dependencies = [
 
 [[package]]
 name = "sol-intel"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "sol-core",
 ]
 
 [[package]]
 name = "sol-ipc"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -747,7 +747,7 @@ dependencies = [
 
 [[package]]
 name = "sol-nvidia"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "nvml-wrapper",
  "sol-core",
@@ -756,7 +756,7 @@ dependencies = [
 
 [[package]]
 name = "sol-service"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",

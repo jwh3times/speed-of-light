@@ -51,7 +51,8 @@ so there's nothing else to install.
 Every merge to `main` is a release. Each [GitHub Release](https://github.com/jwh3times/speed-of-light/releases)
 has `speed-of-light-v<version>-windows-x64.zip`, built by CI from that release's tagged commit,
 and a `SHA256SUMS.txt` beside it. The zip holds `sol.exe`, `sol-service.exe`,
-`examples\profiles\`, this README, the license, `SECURITY.md` and the release notes.
+`examples\profiles\`, `examples\config.toml`, this README, the license, `SECURITY.md` and the
+release notes.
 
 ```powershell
 # In the folder you downloaded both files to
@@ -94,7 +95,7 @@ Fan Control and other tuning tools first: two tools driving the same fans fight 
 
 ```powershell
 # Elevated. Installs (or upgrades) the Windows service and starts it.
-sol-service install --startup-profile examples\profiles\quiet-curve.toml
+sol-service install --config examples\config.toml --startup-profile examples\profiles\quiet-curve.toml
 sol status                            # from any terminal
 
 # Elevated. Stops it, returns every GPU to stock, and removes it.
@@ -103,14 +104,22 @@ sol-service uninstall                 # --purge also deletes the logs and crash 
 
 The service starts at boot and Windows restarts it within seconds if it dies. Each start hands
 the fans back to firmware control before anything else. It runs from a copy in
-`%ProgramFiles%\SpeedOfLight`. Its startup profile is a copy kept in `%ProgramData%\SpeedOfLight`
-(with the logs), so to change the profile, edit your file and run `install` again.
-`sol-service install` takes `--allow-unverified`, `--tick-ms`, `--stability-secs` and
-`--log-level` like `run` does. Until your GPU and driver are in the compatibility matrix, a
-profile's power, clock and fan settings stay blocked unless you install with
-`--allow-unverified`, and the service log shows the profile as not fully applied. To try the service
-without touching your GPU, install with `--simulate 1`. For a console session instead, use
-`sol-service run` from an elevated terminal while the service isn't running.
+`%ProgramFiles%\SpeedOfLight`. Its service config and startup profile are copies kept in
+`%ProgramData%\SpeedOfLight` (with the logs), so to change either, edit your file and run
+`install` again.
+
+The service config (`examples\config.toml` shows every key) holds your policy caps (the highest
+power limit and clock offsets the service will ever apply, whoever asks), the tick rate, the
+crash guard's stability window, the log level and `allow_unverified`. Without `--config` the
+service runs on the defaults, with no caps. If the installed copy can't be used (edited into
+something invalid, or changeable by a standard user), the service still runs and monitors but
+refuses every write except `sol reset` and `sol fan auto`, and `sol status` says why. Until your
+GPU and driver are in the compatibility matrix, the startup profile's power, clock and fan
+settings stay blocked unless the config sets `allow_unverified = true`, and the service log shows
+the profile as not fully applied. To try the service without touching your GPU, install with
+`--simulate 1`. For a console session instead, use `sol-service run` from an elevated terminal
+while the service isn't running; it takes `--config` too, plus `--tick-ms`, `--stability-secs`,
+`--log-level` and `--allow-unverified`, which win over the file.
 
 ### Profiles
 

@@ -2,9 +2,10 @@
 //! `uninstall`. Kept thin: the registration is built by [`crate::registration`], the files
 //! are trusted by [`crate::trust`], and the service runs [`crate::host::run`].
 
-use crate::cli::Settings;
+use crate::cli::Simulation;
+use crate::config::{self, ServiceConfig};
 use crate::host::{self, HostConfig};
-use crate::registration::{self, LOG_DIR, Registration, SERVICE_NAME, STARTUP_PROFILE_FILE};
+use crate::registration::{self, CONFIG_FILE, LOG_DIR, Registration, SERVICE_NAME, STARTUP_PROFILE_FILE};
 use crate::{backends, reset_to_stock, trust};
 use anyhow::{Context, Result, bail};
 use sol_core::profile::Profile;
@@ -198,9 +199,29 @@ fn copy_with_retry(from: &Path, to: &Path) -> Result<()> {
         .with_context(|| format!("copying {} to {}", from.display(), to.display()))
 }
 
-/// Install, or upgrade in place, and start. See the spec in #16 and ADR 0002.
-pub fn install(settings: &Settings, startup_profile: Option<&Path>) -> Result<()> {
+/// Write `text` to `path`, or with no text remove what an earlier install left there.
+fn replace_stored(path: &Path, text: Option<&str>, what: &str) -> Result<()> {
+    match text {
+        Some(text) => std::fs::write(path, text).with_context(|| format!("writing {}", path.display())),
+        None => match std::fs::remove_file(path) {
+            Ok(()) => {
+                println!("removed the previous {what}");
+                Ok(())
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e).with_context(|| format!("removing {}", path.display())),
+        },
+    }
+}
+
+/// Install, or upgrade in place, and start. See the specs in #16 and #17, and ADRs 0002 and 0003.
+pub fn install(sim: &Simulation, config: Option<&Path>, startup_profile: Option<&Path>) -> Result<()> {
     require_elevation("install")?;
+    // Both files are checked before anything changes, so a bad one leaves the install as it was.
+    let config_text = match config {
+        None => None,
+        Some(p) => Some(config::read_named(p).map_err(anyhow::Error::msg)?.0),
+    };
     let profile_text = match startup_profile {
         None => None,
         Some(p) => {
@@ -210,7 +231,7 @@ pub fn install(settings: &Settings, startup_profile: Option<&Path>) -> Result<()
         }
     };
 
-    let reg = registration::registration(&program_files(), settings);
+    let reg = registration::registration(&program_files(), sim);
     let manager = ServiceManager::local_computer(
         None::<&str>,
         ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE,
@@ -239,21 +260,13 @@ pub fn install(settings: &Settings, startup_profile: Option<&Path>) -> Result<()
     }
 
     // The state folder: take it back first (a standard user may have created it), write the
-    // startup profile, then reset again so the new file is administrator-owned too.
+    // service config and the startup profile, then reset again so the new files are
+    // administrator-owned too.
     let state = host::default_state_dir();
     std::fs::create_dir_all(&state).with_context(|| format!("creating {}", state.display()))?;
     trust::harden_dir(&state, true).with_context(|| format!("locking down {}", state.display()))?;
-    let stored = state.join(STARTUP_PROFILE_FILE);
-    match &profile_text {
-        Some(text) => {
-            std::fs::write(&stored, text).with_context(|| format!("writing {}", stored.display()))?
-        }
-        None => match std::fs::remove_file(&stored) {
-            Ok(()) => println!("removed the previous startup profile"),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(e).with_context(|| format!("removing {}", stored.display())),
-        },
-    }
+    replace_stored(&state.join(CONFIG_FILE), config_text.as_deref(), "service config")?;
+    replace_stored(&state.join(STARTUP_PROFILE_FILE), profile_text.as_deref(), "startup profile")?;
     trust::harden_dir(&state, true).with_context(|| format!("locking down {}", state.display()))?;
 
     let info = service_info(&reg);
@@ -284,6 +297,13 @@ pub fn install(settings: &Settings, startup_profile: Option<&Path>) -> Result<()
     println!("installed and started {} ({})", reg.display_name, reg.name);
     println!("  binary:          {}", reg.executable.display());
     println!("  state and logs:  {}", state.display());
+    match config {
+        Some(p) => println!(
+            "  service config:  copied from {} (edit it and run install again to change it)",
+            p.display()
+        ),
+        None => println!("  service config:  none (the defaults, with no policy caps)"),
+    }
     match startup_profile {
         Some(p) => println!(
             "  startup profile: copied from {} (edit it and run install again to change it)",
@@ -291,7 +311,7 @@ pub fn install(settings: &Settings, startup_profile: Option<&Path>) -> Result<()
         ),
         None => println!("  startup profile: none"),
     }
-    if settings.simulate.is_some() {
+    if sim.simulate.is_some() {
         println!("  simulated GPUs only: no real GPU is touched");
     }
     Ok(())
@@ -358,28 +378,38 @@ pub fn uninstall(purge: bool) -> Result<i32> {
     if purge {
         report_removal(&state, |p| std::fs::remove_dir_all(p));
     } else {
+        report_removal(&state.join(CONFIG_FILE), |p| std::fs::remove_file(p));
         report_removal(&state.join(STARTUP_PROFILE_FILE), |p| std::fs::remove_file(p));
         println!("kept the logs and the crash guard in {} (`--purge` removes them)", state.display());
     }
     Ok(code)
 }
 
-static SERVICE_SETTINGS: OnceLock<Settings> = OnceLock::new();
+static SERVICE_SIMULATION: OnceLock<Simulation> = OnceLock::new();
 
 windows_service::define_windows_service!(ffi_service_main, service_main);
 
 /// Hand this thread to the Service Control Manager. Returns once the service has stopped.
-pub fn run_dispatcher(settings: Settings) -> Result<()> {
-    let _ = SERVICE_SETTINGS.set(settings);
+pub fn run_dispatcher(sim: Simulation) -> Result<()> {
+    let _ = SERVICE_SIMULATION.set(sim);
     windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_main)
         .context("connecting to the Service Control Manager (this command is only for the service itself)")
 }
 
 fn service_main(_arguments: Vec<OsString>) {
-    let Some(settings) = SERVICE_SETTINGS.get().cloned() else { return };
+    let Some(sim) = SERVICE_SIMULATION.get().cloned() else { return };
     let state_dir = host::default_state_dir();
-    let _log = init_file_logging(&state_dir.join(LOG_DIR), settings.log_level);
-    if let Err(e) = run_service(settings, state_dir) {
+    // Read before logging starts, so the file's log level applies from the first line.
+    let (config, config_rejected) = match host::load_service_config(&state_dir.join(CONFIG_FILE)) {
+        config::Loaded::Missing => (ServiceConfig::default(), None),
+        config::Loaded::Trusted(c) => (c, None),
+        config::Loaded::Rejected(why) => (ServiceConfig::default(), Some(why)),
+    };
+    let _log = init_file_logging(&state_dir.join(LOG_DIR), config.log_level);
+    if let Some(why) = &config_rejected {
+        tracing::error!("service config rejected; writes are blocked until it is fixed: {why}");
+    }
+    if let Err(e) = run_service(sim, config, config_rejected, state_dir) {
         tracing::error!("service failed: {e:#}");
     }
 }
@@ -400,7 +430,12 @@ fn init_file_logging(
     Some(guard)
 }
 
-fn run_service(settings: Settings, state_dir: PathBuf) -> Result<()> {
+fn run_service(
+    sim: Simulation,
+    config: ServiceConfig,
+    config_rejected: Option<String>,
+    state_dir: PathBuf,
+) -> Result<()> {
     let (stop_tx, mut stop_rx) = tokio::sync::watch::channel(false);
     let status = service_control_handler::register(SERVICE_NAME, move |control| match control {
         ServiceControl::Stop | ServiceControl::Shutdown => {
@@ -428,11 +463,18 @@ fn run_service(settings: Settings, state_dir: PathBuf) -> Result<()> {
         ServiceExitCode::Win32(0),
         Duration::ZERO,
     )?;
-    tracing::info!(version = crate::VERSION, ?settings, "service started");
+    tracing::info!(version = crate::VERSION, ?sim, ?config, "service started");
 
     let stored = state_dir.join(STARTUP_PROFILE_FILE);
     let startup_profile = stored.exists().then(|| host::load_startup_profile(&stored, true));
-    let cfg = HostConfig { settings, state_dir, pipe: sol_ipc::PIPE_NAME.into(), startup_profile };
+    let cfg = HostConfig {
+        sim,
+        config,
+        config_rejected,
+        state_dir,
+        pipe: sol_ipc::PIPE_NAME.into(),
+        startup_profile,
+    };
     let stop = async {
         let _ = stop_rx.changed().await;
         let _ = report_status(

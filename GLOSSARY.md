@@ -40,6 +40,18 @@ administrator-owned copy taken at install time, never the user's own file; a con
 reads the file it was given.
 _Avoid_: boot profile, default profile
 
+**Service config**:
+The administrator-owned settings the installed service runs with: its policy caps, whether it
+allows unverified writes, how often it ticks, its stability window and how much it logs. Like
+the startup profile, it is a copy taken at install time, never the user's own file; a console
+session reads the file it was given.
+_Avoid_: settings file, config (on its own)
+
+**Policy caps**:
+The user's own limits on power and clock offsets, set inside the range the driver allows. They
+bind every write, whichever client asks, and no request can loosen them.
+_Avoid_: user limits, max settings
+
 **Stock**:
 The card's default power limit, zero clock offsets and firmware control.
 _Avoid_: default, factory settings

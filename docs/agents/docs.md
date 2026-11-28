@@ -29,11 +29,11 @@
 - `docs/architecture.md`: the process model, the data flow between CLI, service and backends, and
   why Rust. Update when a crate is added or its role changes (`Cargo.toml` members), or the
   service's process model, state folder or IPC transport does (`crates/sol-service/src/main.rs`,
-  `host.rs`, `winsvc.rs`, `registration.rs`, `trust.rs`, `crates/sol-ipc/`).
+  `host.rs`, `winsvc.rs`, `registration.rs`, `trust.rs`, `config.rs`, `crates/sol-ipc/`).
 - `docs/safety.md`: every safety invariant and the test that guards it. Update in the same change
   that adds or changes an invariant or renames its guarding test (`crates/sol-core/src/tuner.rs`,
   `fan.rs`, `crashguard.rs`, `crates/sol-service/tests/service.rs`, and the unit tests in
-  `crates/sol-service/src/registration.rs`, `trust.rs` and `winsvc.rs`).
+  `crates/sol-service/src/registration.rs`, `trust.rs`, `winsvc.rs` and `config.rs`).
 - `docs/testing.md`: the test layers (hermetic, simulation, live read-only probes, hardware
   reports) and how to add coverage. Update when a test layer, a fault in `sim::Faults` or a test
   command changes.

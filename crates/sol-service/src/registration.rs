@@ -1,8 +1,7 @@
 //! The Windows service registration as plain data. `install` hands this to the Service
 //! Control Manager; building it here, without Win32, lets tests check every field.
 
-use crate::cli::{Cli, Command, Settings};
-use clap::Parser;
+use crate::cli::Simulation;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -14,6 +13,8 @@ pub const DESCRIPTION: &str =
 pub const EXE_NAME: &str = "sol-service.exe";
 /// The administrator-owned copy of the startup profile, inside the state folder.
 pub const STARTUP_PROFILE_FILE: &str = "startup-profile.toml";
+/// The administrator-owned copy of the service config, inside the state folder.
+pub const CONFIG_FILE: &str = "config.toml";
 pub const LOG_DIR: &str = "logs";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,9 +63,10 @@ pub fn state_dir(program_data: &Path) -> PathBuf {
     program_data.join(SERVICE_NAME)
 }
 
-pub fn registration(program_files: &Path, settings: &Settings) -> Registration {
+/// The service's settings are in its service config; only the simulation is on its command line.
+pub fn registration(program_files: &Path, sim: &Simulation) -> Registration {
     let mut arguments = vec!["service".to_string()];
-    arguments.extend(settings.to_args());
+    arguments.extend(sim.to_args());
     Registration {
         name: SERVICE_NAME,
         display_name: DISPLAY_NAME,
@@ -94,39 +96,42 @@ pub fn arguments_from_command_line(command_line: &str) -> Vec<String> {
 
 /// Whether uninstall should return the real GPUs to stock, given the service's stored command
 /// line. Only an install that provably used `--simulate` is spared: it never touched a GPU.
+///
+/// It reads the tokens rather than parsing them, so a registration written by an earlier
+/// version, whose `service` command line still carried the settings flags, is read the same way.
 pub fn uninstall_resets_real_gpus(stored_command_line: Option<&str>) -> bool {
-    let simulated = stored_command_line
-        .and_then(|line| settings_from_arguments(&arguments_from_command_line(line)))
-        .is_some_and(|s| s.simulate.is_some());
+    let simulated = stored_command_line.map(arguments_from_command_line).is_some_and(|args| {
+        args.first().is_some_and(|a| a == "service")
+            && args.iter().any(|a| a == "--simulate" || a.starts_with("--simulate="))
+    });
     !simulated
-}
-
-/// The settings a registered service starts with, from its stored arguments. `None` when
-/// they aren't a `service` command line this version understands.
-pub fn settings_from_arguments(arguments: &[String]) -> Option<Settings> {
-    let argv = std::iter::once("sol-service").chain(arguments.iter().map(String::as_str));
-    match Cli::try_parse_from(argv).ok()?.command {
-        Command::Service { settings } => Some(settings),
-        _ => None,
-    }
 }
 
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
+    use crate::cli::{Cli, Command};
+    use clap::Parser;
 
-    fn settings(args: &[&str]) -> Settings {
-        let argv = ["sol-service", "service"].iter().chain(args).copied();
+    /// What the `service` subcommand makes of these arguments, as the SCM passes them.
+    fn service_parses(arguments: &[String]) -> Simulation {
+        let argv = std::iter::once("sol-service").chain(arguments.iter().map(String::as_str));
         match Cli::try_parse_from(argv).unwrap().command {
-            Command::Service { settings } => settings,
+            Command::Service { sim } => sim,
             other => panic!("{other:?}"),
         }
     }
 
+    fn sim(args: &[&str]) -> Simulation {
+        let argv: Vec<String> =
+            std::iter::once("service").chain(args.iter().copied()).map(String::from).collect();
+        service_parses(&argv)
+    }
+
     #[test]
     fn the_service_runs_as_local_system_at_boot_from_program_files() {
-        let reg = registration(Path::new(r"C:\Program Files"), &settings(&[]));
+        let reg = registration(Path::new(r"C:\Program Files"), &sim(&[]));
         assert_eq!(reg.name, "SpeedOfLight");
         assert_eq!(reg.display_name, "Speed of Light");
         assert_eq!(reg.executable, PathBuf::from(r"C:\Program Files\SpeedOfLight\sol-service.exe"));
@@ -137,7 +142,7 @@ mod tests {
 
     #[test]
     fn a_dead_service_is_restarted_within_seconds_every_time() {
-        let reg = registration(Path::new(r"C:\Program Files"), &settings(&[]));
+        let reg = registration(Path::new(r"C:\Program Files"), &sim(&[]));
         assert_eq!(
             reg.recovery,
             Recovery {
@@ -149,21 +154,17 @@ mod tests {
     }
 
     #[test]
-    fn stored_arguments_start_the_service_with_the_settings_install_was_given() {
-        for args in [
-            &[][..],
-            &["--allow-unverified", "--tick-ms", "500", "--stability-secs", "300"][..],
-            &["--simulate", "2", "--sim-load", "0.25", "--log-level", "debug"][..],
-            &["--log-level", "warn", "--tick-ms", "5000"][..],
-        ] {
-            let given = settings(args);
+    fn the_registered_command_line_carries_no_settings_only_the_simulation() {
+        // The settings live in the service config; the command line can't say what it holds.
+        let real = registration(Path::new(r"C:\Program Files"), &sim(&[]));
+        assert_eq!(real.arguments, ["service"]);
+        let simulated =
+            registration(Path::new(r"C:\Program Files"), &sim(&["--simulate", "2", "--sim-load", "0.25"]));
+        assert_eq!(simulated.arguments, ["service", "--simulate", "2", "--sim-load", "0.25"]);
+        // The service starts with the simulation install was given.
+        for given in [sim(&[]), sim(&["--simulate", "2", "--sim-load", "0.25"])] {
             let reg = registration(Path::new(r"C:\Program Files"), &given);
-            assert_eq!(
-                settings_from_arguments(&reg.arguments),
-                Some(given),
-                "{args:?} -> {:?}",
-                reg.arguments
-            );
+            assert_eq!(service_parses(&reg.arguments), given, "{:?}", reg.arguments);
         }
     }
 
@@ -189,21 +190,25 @@ mod tests {
 
     #[test]
     fn uninstalling_a_simulated_install_touches_no_real_gpu() {
-        let simulated = r#""C:\Program Files\SpeedOfLight\sol-service.exe" service --tick-ms 1000 --simulate 1 --sim-load 0.6"#;
-        let real = r#""C:\Program Files\SpeedOfLight\sol-service.exe" service --tick-ms 1000"#;
+        let simulated =
+            r#""C:\Program Files\SpeedOfLight\sol-service.exe" service --simulate 1 --sim-load 0.6"#;
+        let real = r#""C:\Program Files\SpeedOfLight\sol-service.exe" service"#;
         assert!(!uninstall_resets_real_gpus(Some(simulated)));
         assert!(uninstall_resets_real_gpus(Some(real)));
+        // A registration from before the service config (v0.2) still carries its settings
+        // flags. This version's uninstall must read it the same way.
+        let old_simulated = r#""C:\Program Files\SpeedOfLight\sol-service.exe" service --tick-ms 1000 --stability-secs 120 --log-level info --allow-unverified --simulate 1 --sim-load 0.6"#;
+        let old_real = r#""C:\Program Files\SpeedOfLight\sol-service.exe" service --tick-ms 1000 --stability-secs 120 --log-level info"#;
+        assert!(!uninstall_resets_real_gpus(Some(old_simulated)));
+        assert!(uninstall_resets_real_gpus(Some(old_real)));
+        // The flag's `=` form, which the parser accepts too.
+        let equals_form = r#""C:\Program Files\SpeedOfLight\sol-service.exe" service --simulate=1"#;
+        assert!(!uninstall_resets_real_gpus(Some(equals_form)));
+        // `--simulate` only counts in a `service` command line.
+        assert!(uninstall_resets_real_gpus(Some(r"C:\sol\sol-service.exe run --simulate 1")));
         // When the stored command line can't be read or understood, uninstall still does its
         // job: returning real GPUs to stock.
         assert!(uninstall_resets_real_gpus(None));
         assert!(uninstall_resets_real_gpus(Some("something else entirely")));
-    }
-
-    #[test]
-    fn arguments_that_are_not_a_service_command_line_are_not_understood() {
-        let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        assert_eq!(settings_from_arguments(&args(&["run", "--simulate", "1"])), None);
-        assert_eq!(settings_from_arguments(&args(&["service", "--no-such-flag"])), None);
-        assert_eq!(settings_from_arguments(&[]), None);
     }
 }

@@ -7,6 +7,7 @@
 
 pub mod backends;
 pub mod cli;
+pub mod config;
 pub mod conflicts;
 #[cfg(windows)]
 pub mod host;
@@ -48,12 +49,35 @@ pub const MAX_FAN_WRITE_FAILURES: u32 = 3;
 const MAX_NOTICES: usize = 20;
 
 #[derive(Debug, Clone)]
-pub struct ServiceConfig {
+pub struct ServiceOptions {
     pub state_dir: PathBuf,
     pub policy: SafetyPolicy,
     pub startup_profile: Option<StartupProfile>,
     /// How long an applied profile must survive before the crash guard disarms.
     pub stability_window: Duration,
+    /// Why the installed service's config was rejected (untrusted, unreadable or invalid).
+    /// While set, every write except a return to stock is refused (ADR 0003).
+    pub config_rejected: Option<String>,
+}
+
+impl ServiceOptions {
+    /// What the service runs with, given its service config: the config's policy caps and
+    /// stability window. `config_rejected` is why the installed copy couldn't be used, in which
+    /// case `config` is the defaults and every write but a return to stock is refused.
+    pub fn from_config(
+        state_dir: PathBuf,
+        config: &config::ServiceConfig,
+        startup_profile: Option<StartupProfile>,
+        config_rejected: Option<String>,
+    ) -> Self {
+        ServiceOptions {
+            state_dir,
+            policy: config.policy.clone(),
+            startup_profile,
+            stability_window: Duration::from_secs(config.stability_secs),
+            config_rejected,
+        }
+    }
 }
 
 /// The startup profile as the host read it. The host decides whether the file can be trusted
@@ -154,7 +178,7 @@ impl Managed {
 
 pub struct Service {
     devices: Vec<Managed>,
-    cfg: ServiceConfig,
+    opts: ServiceOptions,
     matrix: CompatMatrix,
     guard: CrashGuard,
     tripped: Option<Sentinel>,
@@ -181,8 +205,8 @@ impl std::fmt::Debug for Service {
 impl Service {
     /// Opens `source` once now, and again from [`Service::tick`] with backoff until it finds a
     /// GPU. Each GPU found gets the startup takeover, then the startup profile is applied.
-    pub fn new(source: impl DeviceSource + 'static, cfg: ServiceConfig, matrix: CompatMatrix) -> Self {
-        let guard = CrashGuard::new(cfg.state_dir.join("crash-guard.json"));
+    pub fn new(source: impl DeviceSource + 'static, opts: ServiceOptions, matrix: CompatMatrix) -> Self {
+        let guard = CrashGuard::new(opts.state_dir.join("crash-guard.json"));
         let tripped = match guard.check() {
             Ok(t) => t,
             Err(e) => {
@@ -192,7 +216,7 @@ impl Service {
         };
         let mut svc = Service {
             devices: Vec::new(),
-            cfg,
+            opts,
             matrix,
             guard,
             tripped,
@@ -209,11 +233,15 @@ impl Service {
     }
 
     /// A service over devices that are already open (tests, and anything that can't wait).
-    pub fn with_devices(devices: Vec<Box<dyn GpuDevice>>, cfg: ServiceConfig, matrix: CompatMatrix) -> Self {
+    pub fn with_devices(
+        devices: Vec<Box<dyn GpuDevice>>,
+        opts: ServiceOptions,
+        matrix: CompatMatrix,
+    ) -> Self {
         let mut devices = Some(devices);
         Service::new(
             move || Opened { devices: devices.take().unwrap_or_default(), statuses: Vec::new() },
-            cfg,
+            opts,
             matrix,
         )
     }
@@ -295,14 +323,28 @@ impl Service {
         self.tripped.as_ref()
     }
 
+    /// Why writes are refused, when the service config was rejected. A return to stock
+    /// (`reset`, fans to firmware) is never refused: stock is inside every cap.
+    fn writes_blocked(&self) -> Option<String> {
+        self.opts.config_rejected.as_ref().map(|why| {
+            format!(
+                "the service config was rejected, so writes are blocked: {why}. Fix it and run \
+                 `sol-service install --config` again; `sol reset` and `sol fan auto` still work"
+            )
+        })
+    }
+
     /// Apply the configured startup profile, unless it was rejected or the crash guard
     /// tripped. Runs by itself once GPUs are found; call it again after `sol guard clear`.
     pub fn startup(&mut self) -> Result<Vec<ApplyReport>, String> {
-        let profile = match &self.cfg.startup_profile {
+        let profile = match &self.opts.startup_profile {
             None => return Ok(Vec::new()),
             Some(StartupProfile::Rejected(reason)) => return Err(reason.clone()),
             Some(StartupProfile::Trusted(p)) => p.clone(),
         };
+        if let Some(why) = self.writes_blocked() {
+            return Err(why);
+        }
         if let Some(t) = &self.tripped {
             return Err(format!(
                 "crash guard tripped: profile {:?} did not survive its stability window last time. \
@@ -314,6 +356,14 @@ impl Service {
     }
 
     pub fn handle(&mut self, req: Request) -> Response {
+        let tunes = match &req {
+            Request::ApplyProfile { .. } => true,
+            Request::SetFan { setting, .. } => *setting != FanSetting::Auto,
+            _ => false,
+        };
+        if tunes && let Some(message) = self.writes_blocked() {
+            return Response::Error { message };
+        }
         match req {
             Request::Hello { protocol } if protocol == PROTOCOL_VERSION => {
                 Response::Hello { protocol: PROTOCOL_VERSION, service_version: VERSION.into() }
@@ -321,11 +371,17 @@ impl Service {
             Request::Hello { protocol } => Response::Error {
                 message: format!("protocol {protocol} not supported; service speaks {PROTOCOL_VERSION}"),
             },
-            Request::Status => Response::Status {
-                devices: self.devices.iter().map(Managed::status).collect(),
-                guard: self.tripped.clone(),
-                backends: self.backends.clone(),
-            },
+            Request::Status => {
+                let mut devices: Vec<DeviceStatus> = self.devices.iter().map(Managed::status).collect();
+                // Added on every status, not kept among the notices, so later ones can't push it
+                // out while writes stay blocked.
+                if let Some(why) = self.writes_blocked() {
+                    for d in &mut devices {
+                        d.notices.insert(0, why.clone());
+                    }
+                }
+                Response::Status { devices, guard: self.tripped.clone(), backends: self.backends.clone() }
+            }
             Request::ApplyProfile { profile, allow_unverified } => match profile.validate() {
                 Err(e) => Response::Error { message: e.to_string() },
                 Ok(()) => Response::Applied { reports: self.apply(&profile, allow_unverified) },
@@ -358,8 +414,8 @@ impl Service {
 
     fn apply(&mut self, profile: &Profile, allow_unverified: bool) -> Vec<ApplyReport> {
         let policy = SafetyPolicy {
-            allow_unverified: self.cfg.policy.allow_unverified || allow_unverified,
-            ..self.cfg.policy.clone()
+            allow_unverified: self.opts.policy.allow_unverified || allow_unverified,
+            ..self.opts.policy.clone()
         };
         let touches_hardware = profile.power.is_some()
             || profile.clocks.core_offset_mhz.is_some()
@@ -503,7 +559,7 @@ impl Service {
         }
 
         if let Some(at) = self.armed_at
-            && at.elapsed() >= self.cfg.stability_window
+            && at.elapsed() >= self.opts.stability_window
         {
             match self.guard.disarm() {
                 Ok(()) => {
