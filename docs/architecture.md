@@ -28,7 +28,8 @@
 
 1. Client sends `ApplyProfile { profile, allow_unverified }`.
 2. `tuner::plan` resolves the profile against the device's `Capabilities` and the user's
-   `SafetyPolicy`. Out-of-range items are `Rejected`. It's pure, so nothing is written.
+   `SafetyPolicy` (the service config's policy caps). Out-of-range items are `Rejected`. It's
+   pure, so nothing is written.
 3. `Service::apply` arms the crash guard if power or clocks are involved.
 4. `tuner::execute` checks each action against the compat matrix (`Blocked` if it fails),
    writes it, and reads it back (`Applied`, `NotEnforced`, or `Failed`).

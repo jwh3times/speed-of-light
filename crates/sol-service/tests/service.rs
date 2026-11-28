@@ -624,7 +624,7 @@ fn a_rejected_service_config_blocks_every_write_except_a_return_to_stock() {
         Service::with_devices(vec![Box::new(a.clone()), Box::new(b.clone())], cfg, CompatMatrix::default())
             .with_conflict_detector(flapping);
 
-    // The startup profile is skipped, and every GPU says why, however many notices come later.
+    // The startup profile is skipped, and every GPU says why first, however many notices come later.
     assert_eq!(a.tuning_state().unwrap().core_offset, Some(MhzOffset(0)));
     for _ in 0..30 {
         svc.tick(sol_service::CONFLICT_RECHECK);
@@ -632,7 +632,7 @@ fn a_rejected_service_config_blocks_every_write_except_a_return_to_stock() {
     assert!(checks.load(Ordering::SeqCst) >= 30);
     let (devices, _) = status(&mut svc);
     for d in &devices {
-        assert!(d.notices.iter().any(|n| n.contains("tick_ms = 1")), "{:?}", d.notices);
+        assert!(d.notices.first().is_some_and(|n| n.contains("tick_ms = 1")), "{:?}", d.notices);
     }
     assert!(svc.startup().unwrap_err().contains("tick_ms = 1"));
 

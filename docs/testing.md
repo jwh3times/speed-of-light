@@ -27,8 +27,9 @@ desktop, so the strategy is layered. Each layer catches what the one below can't
 `crates/sol-service/tests/service.rs` runs the real `Service` against `SimulatedGpu`. That
 covers the thermal model, firmware auto-fan, the power cap and fault injection (ignored writes,
 permission errors, dead sensors, failing fan writes, lost device), a driver that is still
-loading when the service starts, a tuning tool that starts later, and uninstall's return to
-stock. Simulated time advances in
+loading when the service starts, a tuning tool that starts later, policy caps binding the
+startup profile and every request, a rejected service config blocking every write but a return
+to stock, and uninstall's return to stock. Simulated time advances in
 1 s steps, so a 10-minute load test runs in milliseconds. These tests assert outcomes ("the
 GPU never reaches slowdown"), not implementation details.
 

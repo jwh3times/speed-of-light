@@ -114,12 +114,12 @@ crash guard's stability window, the log level and `allow_unverified`. Without `-
 service runs on the defaults, with no caps. If the installed copy can't be used (edited into
 something invalid, or changeable by a standard user), the service still runs and monitors but
 refuses every write except `sol reset` and `sol fan auto`, and `sol status` says why. Until your
-GPU and driver are in the compatibility matrix, a profile's power, clock and fan settings stay
-blocked unless the config sets `allow_unverified = true`, and the service log shows the profile as
-not fully applied. To try the service without touching your GPU, install with `--simulate 1`. For
-a console session instead, use `sol-service run` from an elevated terminal while the service isn't
-running; it takes `--config` too, plus `--tick-ms`, `--stability-secs`, `--log-level` and
-`--allow-unverified`, which win over the file.
+GPU and driver are in the compatibility matrix, the startup profile's power, clock and fan
+settings stay blocked unless the config sets `allow_unverified = true`, and the service log shows
+the profile as not fully applied. To try the service without touching your GPU, install with
+`--simulate 1`. For a console session instead, use `sol-service run` from an elevated terminal
+while the service isn't running; it takes `--config` too, plus `--tick-ms`, `--stability-secs`,
+`--log-level` and `--allow-unverified`, which win over the file.
 
 ### Profiles
 
