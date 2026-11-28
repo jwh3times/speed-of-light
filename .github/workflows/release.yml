@@ -182,6 +182,7 @@ jobs:
           New-Item -ItemType Directory -Force "$dir/examples/profiles" | Out-Null
           Copy-Item target/release/sol.exe, target/release/sol-service.exe, README.md, LICENSE, SECURITY.md $dir
           Copy-Item examples/profiles/*.toml "$dir/examples/profiles"
+          Copy-Item examples/config.toml "$dir/examples"
           gh release view $env:TAG --json body --jq .body | Set-Content -Encoding utf8NoBOM "$dir/RELEASE-NOTES.md"
           if ($LASTEXITCODE -ne 0) { throw "gh release view $env:TAG failed" }
           Compress-Archive -Path $dir -DestinationPath "dist/$name.zip"

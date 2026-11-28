@@ -28,8 +28,8 @@
       Control closed). Commit the first `verified` write entries.
 - [ ] Recruit testers for Turing, Ada, Blackwell and laptops. Hardware-report issue template.
 - [ ] Record/replay device for turning user bug reports into CI regression tests.
-- [ ] Config file (`%ProgramData%\SpeedOfLight\config.toml`) for policy, startup profile and
-      tick rate.
+- [x] Config file (`%ProgramData%\SpeedOfLight\config.toml`) for policy, startup profile and
+      tick rate (#17, [ADR 0003](docs/adr/0003-a-bad-service-config-blocks-every-write.md)).
 - [ ] Client-side verification of the pipe server's identity (`GetNamedPipeServerProcessId`
       plus a token/elevation check).
 - [ ] Profile store and per-application profiles (switch on game launch).

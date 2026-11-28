@@ -13,11 +13,12 @@ desktop, so the strategy is layered. Each layer catches what the one below can't
 - `sol-ipc`: protocol round trips, a pinned wire format, framing (malformed and oversized
   input), and a real named-pipe round trip including the anti-squatting check.
 - `sol-nvidia`: error and throttle-reason mapping.
-- `sol-service`: the Windows service's registration (account, start type, recovery actions, and
-  the stored arguments parsing back into the same settings), which backend states are retried,
-  the rule behind `run`'s refusal while the installed service owns the GPUs, and the
-  startup-profile trust check
-  against real ACLs on temporary files.
+- `sol-service`: the Windows service's registration (account, start type, recovery actions, a
+  command line holding only the simulation, and uninstall reading simulated registrations from
+  this version and earlier ones), the service config (strict parsing, ranges and defaults, and
+  loading a missing, invalid or untrusted file), the console's flags winning over the config,
+  which backend states are retried, the rule behind `run`'s refusal while the installed service
+  owns the GPUs, and the startup-profile trust check against real ACLs on temporary files.
 - `sol-cli`, by running the real `sol` binary: what it prints when nothing serves the pipe (an
   unserved pipe name), and that its text output through a pipe is UTF-8.
 
