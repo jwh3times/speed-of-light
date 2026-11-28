@@ -303,7 +303,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = write(&dir, "schema = 1\ntick_ms = 1\n");
         let Loaded::Rejected(why) = load_installed(&path, trusted) else { panic!("not rejected") };
-        assert!(why.contains("config.toml") && why.contains("tick_ms"), "{why}");
+        assert!(why.contains("config.toml") && why.contains("tick_ms"));
     }
 
     #[test]
@@ -312,10 +312,10 @@ mod tests {
         let path = write(&dir, "schema = 1\n");
         let users_can_write = |_: &Path| Ok(Some("BUILTIN\\Users can write it".to_string()));
         let Loaded::Rejected(why) = load_installed(&path, users_can_write) else { panic!("not rejected") };
-        assert!(why.contains("BUILTIN\\Users can write it"), "{why}");
+        assert!(why.contains("BUILTIN\\Users can write it"));
         let unknown = |_: &Path| Err("access denied".to_string());
         let Loaded::Rejected(why) = load_installed(&path, unknown) else { panic!("not rejected") };
-        assert!(why.contains("access denied"), "{why}");
+        assert!(why.contains("access denied"));
     }
 
     #[test]
