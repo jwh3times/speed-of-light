@@ -1,5 +1,13 @@
 # Roadmap
 
+## Done (0.3.0, pre-alpha)
+
+- A service config (`%ProgramData%\SpeedOfLight\config.toml`, set by `sol-service install
+  --config`) for the policy caps, `allow_unverified`, the tick rate, the stability window and the
+  log level. The caps bind the startup profile and every request, and a config the service can't
+  trust or read blocks every write but a return to stock
+  ([ADR 0003](docs/adr/0003-a-bad-service-config-blocks-every-write.md)) (#17).
+
 ## Done (0.2.0, pre-alpha)
 
 - Runs as a real Windows service (`sol-service install` / `uninstall`): LocalSystem, starts at
@@ -28,8 +36,6 @@
       Control closed). Commit the first `verified` write entries.
 - [ ] Recruit testers for Turing, Ada, Blackwell and laptops. Hardware-report issue template.
 - [ ] Record/replay device for turning user bug reports into CI regression tests.
-- [ ] Config file (`%ProgramData%\SpeedOfLight\config.toml`) for policy, startup profile and
-      tick rate.
 - [ ] Client-side verification of the pipe server's identity (`GetNamedPipeServerProcessId`
       plus a token/elevation check).
 - [ ] Profile store and per-application profiles (switch on game launch).

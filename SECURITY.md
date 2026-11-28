@@ -21,9 +21,13 @@ not in public issues.
   run from, so a standard user can't replace what the service runs.
 - **Admin-owned state.** `install` makes Administrators the owner of `%ProgramData%\SpeedOfLight`
   and gives it a protected ACL (SYSTEM and Administrators full control, Users read, nothing
-  inherited), even if a standard user created the folder first. The service applies its startup
-  profile only from the copy kept there, and skips it if a non-administrator could change it.
-  See [ADR 0002](docs/adr/0002-service-trusts-only-admin-owned-state.md).
+  inherited), even if a standard user created the folder first. The service reads its service
+  config and its startup profile only from the copies kept there. A startup profile a
+  non-administrator could change is skipped. A service config a non-administrator could change,
+  or that can't be read or parsed, blocks every write except a return to stock (`sol reset`,
+  `sol fan auto`) until it is fixed, so a tampered file can't lift the policy caps. See
+  [ADR 0002](docs/adr/0002-service-trusts-only-admin-owned-state.md) and
+  [ADR 0003](docs/adr/0003-a-bad-service-config-blocks-every-write.md).
 - **Anti-squatting.** The service creates the pipe with `FILE_FLAG_FIRST_PIPE_INSTANCE`, so it
   refuses to start if another process already owns the name. That stops it from serving
   alongside an impostor.
